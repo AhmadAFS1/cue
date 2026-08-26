@@ -26,7 +26,7 @@ Module._load = function loadWithOpenAIStub(request, parent, isMain) {
   return originalModuleLoad.call(this, request, parent, isMain);
 };
 
-const { createLLM, formatProviderErrorMessage, isQuotaError, CURRENT_GEMINI_DEFAULT } = require('../src/llm');
+const { createLLM, formatProviderErrorMessage, isQuotaError, CURRENT_GEMINI_DEFAULT, CURRENT_OPENAI_DEFAULT } = require('../src/llm');
 
 test.after(() => {
   Module._load = originalModuleLoad;
@@ -89,6 +89,36 @@ test('does not apply the Custom Base URL to official OpenAI requests', async () 
   await llm.stream({ system: '', turns: [], onToken: () => {} });
 
   assert.deepEqual(capturedClientOptions, { apiKey: 'official-openai-key' });
+});
+
+test('uses GPT-5.6 Sol as the OpenAI default with latency-safe request parameters', async () => {
+  const llm = createLLM({
+    provider: 'openai',
+    smart: false,
+    apiKeys: { openai: 'official-openai-key' },
+    models: {}
+  });
+
+  assert.equal(llm.model, CURRENT_OPENAI_DEFAULT);
+  await llm.stream({ system: '', turns: [{ role: 'user', text: 'Hello' }], onToken: () => {} });
+
+  assert.equal(capturedCompletionRequest.model, 'gpt-5.6-sol');
+  assert.equal(capturedCompletionRequest.reasoning_effort, 'none');
+  assert.equal(capturedCompletionRequest.max_completion_tokens, 700);
+  assert.equal('max_tokens' in capturedCompletionRequest, false);
+});
+
+test('uses low reasoning for GPT-5.6 Sol when Smart mode is enabled', async () => {
+  const llm = createLLM({
+    provider: 'openai',
+    smart: true,
+    apiKeys: { openai: 'official-openai-key' },
+    models: { openai: { fast: 'gpt-5.6-sol', smart: 'gpt-5.6-sol' } }
+  });
+
+  await llm.stream({ system: '', turns: [], onToken: () => {} });
+  assert.equal(capturedCompletionRequest.reasoning_effort, 'low');
+  assert.equal(capturedCompletionRequest.max_completion_tokens, 1400);
 });
 
 test('reports incomplete Custom endpoint settings without making a request', () => {

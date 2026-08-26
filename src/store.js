@@ -9,6 +9,7 @@ const FILE = path.join(app.getPath('userData'), 'cue-data.json');
 // Cap on the user's custom response rules. Generous but bounded: anything longer
 // should live in a real prompt file, not in a settings field.
 const MAX_AI_RULES_CHARS = 2000;
+const CURRENT_OPENAI_DEFAULT = 'gpt-5.6-sol';
 
 const DEFAULTS = {
   provider: 'openai',
@@ -43,7 +44,7 @@ const DEFAULTS = {
   windowX: null,
   windowY: null,
   models: {
-    openai: { fast: 'gpt-4o-mini', smart: 'gpt-4o' },
+    openai: { fast: CURRENT_OPENAI_DEFAULT, smart: CURRENT_OPENAI_DEFAULT },
     anthropic: { fast: 'claude-3-5-haiku-latest', smart: 'claude-3-5-sonnet-latest' },
     // Kept in sync with CURRENT_GEMINI_DEFAULT in src/llm.js — gemini-2.0-flash
     // (the previous default here) was retired by Google on 2026-03-03 and 404s
@@ -58,6 +59,17 @@ const DEFAULTS = {
 };
 
 let data = null;
+
+function migrateLegacyOpenAIDefaults(settings) {
+  const openai = settings.models && settings.models.openai;
+  if (!openai) return false;
+  let changed = false;
+  // Upgrade only the exact defaults shipped by cue. Any other model ID is a
+  // user choice and must remain untouched.
+  if (openai.fast === 'gpt-4o-mini') { openai.fast = CURRENT_OPENAI_DEFAULT; changed = true; }
+  if (openai.smart === 'gpt-4o') { openai.smart = CURRENT_OPENAI_DEFAULT; changed = true; }
+  return changed;
+}
 
 function deepMerge(base, over) {
   const out = Array.isArray(base) ? base.slice() : { ...base };
@@ -80,6 +92,7 @@ function load() {
   try { data = deepMerge(DEFAULTS, JSON.parse(fs.readFileSync(FILE, 'utf8'))); }
   catch { data = deepMerge(DEFAULTS, {}); }
 
+  if (migrateLegacyOpenAIDefaults(data)) save();
 
   return data;
 }

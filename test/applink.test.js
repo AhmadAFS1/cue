@@ -97,7 +97,9 @@ test('asks separately, and differently, for control', () => {
  */
 test('answers Iris over the link', async (t) => {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'cue-applink-'));
-  const pathOptions = { homedir: home, env: { ...process.env, LOCALAPPDATA: path.join(home, 'Local') } };
+  // Use a per-test pipe suffix on Windows so this test can run while cue itself
+  // is open under the same user account.
+  const pathOptions = { homedir: home, env: { ...process.env, LOCALAPPDATA: path.join(home, 'Local') }, uid: process.pid };
 
   let asked = 0;
   const link = new AppLinkServer({

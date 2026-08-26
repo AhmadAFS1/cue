@@ -35,11 +35,14 @@ function buildSystem(def, ctx) {
 
 // Build the user turn for a mode. Reuses MODES[].build but passes normalized context.
 function buildUserTurn(def, ctx) {
-  return def.build({ transcript: ctx.recent, userText: ctx.userText, memory: ctx.memory });
+  const mode = def.key || Object.keys(MODES).find((key) => MODES[key] === def);
+  const window = windowFor(mode);
+  const transcript = window ? getRecent(ctx.transcript, window) : ctx.transcript;
+  return def.build({ transcript, userText: ctx.userText, memory: ctx.memory });
 }
 
 // How much of the conversation to include per mode (turns).
-const MODE_WINDOW = { assist: 12, say: 14, followup: 20, recap: 0, ask: 12, leetcode: 0 };
+const MODE_WINDOW = { assist: 0, say: 14, followup: 20, recap: 0, ask: 12, leetcode: 0 };
 
 function windowFor(mode) {
   const n = MODE_WINDOW[mode];

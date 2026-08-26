@@ -12,6 +12,7 @@ const { createStreamingSTT } = require('./src/stt-streaming');
 const { AdaptiveVAD, AudioRingBuffer } = require('./src/vad');
 const { buildInterviewContext, detectCategory } = require('./src/interview-context');
 const { startAppLink, stopAppLink, recordEvent, appLinkConsentState, revokeAppLinkCaller } = require('./src/applink');
+const { buildDisplayMediaGrant, displayMediaHandlerOptions } = require('./src/display-media');
 
 // macOS system-audio loopback (the "them" channel via getDisplayMedia) does not
 // start on Electron 31–38 unless these Chromium features are enabled; without
@@ -771,17 +772,16 @@ function launchApp() {
   session.defaultSession.setPermissionRequestHandler((_wc, permission, cb) => cb(allowMedia(permission)));
   session.defaultSession.setPermissionCheckHandler((_wc, permission) => allowMedia(permission));
 
-  // System-audio loopback for getDisplayMedia: hand back a screen source with 'loopback'
-  // audio so the renderer can capture what's playing (Zoom/Meet) using cue's own grant.
+  // System-audio loopback for getDisplayMedia. Windows binds directly to its
+  // loopback device; macOS uses the native picker when available so the OS can
+  // run the Screen/System Audio permission flow. Older Macs fall back to this
+  // handler and the Chromium feature flags configured above.
   session.defaultSession.setDisplayMediaRequestHandler((_request, callback) => {
     desktopCapturer.getSources({ types: ['screen'] }).then((sources) => {
       if (!sources.length) return callback();
-      const request = { video: sources[0] };
-      if (isWindows) request.audio = true;
-      else request.audio = 'loopback';
-      callback(request);
+      callback(buildDisplayMediaGrant(sources[0]));
     }).catch(() => callback());
-  }, { useSystemPicker: false });
+  }, displayMediaHandlerOptions(process.platform));
 
   // Started before the shortcuts so their registration failures are recorded.
   startAppLink({

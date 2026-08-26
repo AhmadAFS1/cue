@@ -72,4 +72,6 @@ test('mac config ships the zip target with entitlements files that exist on disk
   // silently, with no error, which is indistinguishable from a code bug.
   const entitlementsXml = fs.readFileSync(path.join(root, builder.mac.entitlements), 'utf8');
   assert.match(entitlementsXml, /com\.apple\.security\.device\.audio-input/);
+  assert.match(builder.mac.extendInfo.NSMicrophoneUsageDescription, /microphone/i);
+  assert.match(builder.mac.extendInfo.NSAudioCaptureUsageDescription, /system audio/i);
 });

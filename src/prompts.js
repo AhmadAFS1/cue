@@ -28,7 +28,8 @@ const BASE_RULES =
 
 const MODES = {
 
-  // ── Assist: one-shot "do the smart thing" ─────────────────────────────────
+  // ── Screenshot: one-shot "do the smart thing" ─────────────────────────────
+  // Keep the internal `assist` key for compatibility with saved shortcuts.
   assist: {
     needsScreen: true,
     userBubble: null,
@@ -38,7 +39,7 @@ const MODES = {
       return applyRules(buildSystem(
         'You are cue, a discreet real-time copilot overlaid on the user\'s screen during an interview or coding session. ' +
         BASE_RULES +
-        'Look at the screenshot and the recent conversation, decide what the user needs RIGHT NOW, and deliver it directly with no preamble.\n\n' +
+        'Look at the screenshot and the entire conversation so far, decide what the user needs RIGHT NOW, and deliver it directly with no preamble.\n\n' +
         'Detect the question type and respond accordingly:\n' +
         '• BEHAVIORAL ("tell me about a time…"): Give a complete STAR answer (Situation, Task, Action, Result) using the candidate\'s real stories when available. Be specific, include metrics, 3–4 sentences.\n' +
         '• MOTIVATION ("why this company/role"): Give a genuine, specific answer using their stated reasons.\n' +
@@ -52,8 +53,8 @@ const MODES = {
       ), aiRules, 'assist');
     },
     build(ctx) {
-      const t = formatTranscript(ctx.transcript, 14);
-      return 'Recent conversation:\n' + (t || '(none)') + '\n\nRespond with exactly what I should say right now.';
+      const t = formatTranscript(ctx.transcript, 0);
+      return 'Entire conversation so far:\n' + (t || '(none)') + '\n\nRespond with exactly what I should say right now.';
     }
   },
 

@@ -64,3 +64,14 @@ test('leetcode mode never applies AI rules (coding answers stay strict)', () => 
   assert.ok(!withRules.includes(RULES), 'leetcode must not leak user rules into the prompt');
   assert.match(withRules, /competitive programmer/);
 });
+
+test('screenshot mode includes the entire transcript', () => {
+  const transcript = Array.from({ length: 20 }, (_, i) => ({
+    channel: i % 2 ? 'you' : 'them',
+    text: `turn-${i + 1}`
+  }));
+  const text = MODES.assist.build({ transcript, userText: '' });
+  assert.match(text, /Entire conversation so far/);
+  assert.ok(text.includes('turn-1'), 'first transcript turn should not be truncated');
+  assert.ok(text.includes('turn-20'), 'latest transcript turn should be included');
+});

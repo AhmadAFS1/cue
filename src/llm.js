@@ -4,6 +4,7 @@
 const { createCompatibleClientOptions } = require('./openai-compatible');
 
 const CUSTOM_PROVIDER = 'custom';
+const CURRENT_OPENAI_DEFAULT = 'gpt-5.6-sol';
 // gemini-2.0-flash was Google's default here until it was deprecated (Feb 2026)
 // and fully retired (Mar 3 2026) — every request against it now 404s with a
 // generic "exception parsing response" body. gemini-2.5-flash is the model
@@ -11,7 +12,7 @@ const CUSTOM_PROVIDER = 'custom';
 // available, so it is the single default used everywhere in this file.
 const CURRENT_GEMINI_DEFAULT = 'gemini-2.5-flash';
 const DEFAULT_MODELS = {
-  openai: 'gpt-4o-mini',
+  openai: CURRENT_OPENAI_DEFAULT,
   anthropic: 'claude-3-5-haiku-latest',
   gemini: CURRENT_GEMINI_DEFAULT,
   ollama: 'llama3.2',
@@ -105,7 +106,7 @@ function stripDataUrl(dataUrl) {
   return m ? { mime: m[1], b64: m[2] } : null;
 }
 
-async function streamOpenAI({ apiKey, baseURL, model, system, turns, imageDataUrl, maxTokens, onToken }) {
+async function streamOpenAI({ apiKey, baseURL, model, system, turns, imageDataUrl, maxTokens, reasoningEffort, onToken }) {
   const OpenAI = require('openai');
   const client = new OpenAI(baseURL ? { apiKey, baseURL } : { apiKey });
   const messages = [{ role: 'system', content: system }];
@@ -122,7 +123,16 @@ async function streamOpenAI({ apiKey, baseURL, model, system, turns, imageDataUr
       messages.push({ role: t.role, content: t.text });
     }
   });
-  const stream = await client.chat.completions.create({ model, messages, stream: true, max_tokens: maxTokens });
+  const request = { model, messages, stream: true };
+  if (reasoningEffort) {
+    // GPT-5.6 uses max_completion_tokens. Keep reasoning explicit because its
+    // implicit medium setting is needlessly slow for a live interview overlay.
+    request.max_completion_tokens = maxTokens;
+    request.reasoning_effort = reasoningEffort;
+  } else {
+    request.max_tokens = maxTokens;
+  }
+  const stream = await client.chat.completions.create(request);
   let full = '';
   for await (const part of stream) {
     const d = part.choices && part.choices[0] && part.choices[0].delta && part.choices[0].delta.content;
@@ -331,6 +341,11 @@ function createLLM(settings) {
 
   const ready = !configurationError && !!model;
   const maxTokens = settings.smart ? 1400 : 700;
+  // Screenshot answers are latency-sensitive. Smart off preserves the old
+  // non-reasoning behavior; Smart on enables a small reasoning budget.
+  const reasoningEffort = provider === 'openai' && /^gpt-5\.6(?:-|$)/i.test(model)
+    ? (settings.smart ? 'low' : 'none')
+    : '';
 
   return {
     provider, model, apiKey, baseURL,
@@ -338,7 +353,7 @@ function createLLM(settings) {
     configurationError,
     async stream(params) {
       if (!ready) throw new Error(configurationError || `Complete the ${provider} provider settings.`);
-      const args = { apiKey, baseURL, endpoint, model, maxTokens, ...params, turns: sanitizeTurns(params.turns) };
+      const args = { apiKey, baseURL, endpoint, model, maxTokens, reasoningEffort, ...params, turns: sanitizeTurns(params.turns) };
       try {
         if (provider === 'openai') return await streamOpenAI(args);
         if (provider === CUSTOM_PROVIDER) return await streamOpenAI(args);
@@ -356,4 +371,4 @@ function createLLM(settings) {
   };
 }
 
-module.exports = { createLLM, formatProviderErrorMessage, isQuotaError, CURRENT_GEMINI_DEFAULT };
+module.exports = { createLLM, formatProviderErrorMessage, isQuotaError, CURRENT_GEMINI_DEFAULT, CURRENT_OPENAI_DEFAULT };

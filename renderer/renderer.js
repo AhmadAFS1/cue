@@ -559,6 +559,12 @@
   $('#hide-btn').addEventListener('click', toggleHide);
   cue.on('hide:toggle', toggleHide);
 
+  // Quit the desktop app from the toolbar. The preload bridge already routes
+  // this to Electron's app.quit(); keep the handler beside the other toolbar
+  // actions so the X button remains functional even when global shortcuts are
+  // unavailable.
+  $('#quit-btn').addEventListener('click', () => cue.quit());
+
   // Stop = start/stop listening. Kick off system-audio capture straight from the click so
   // the user-gesture is fresh for getDisplayMedia (loopback capture needs it).
   $('#stop-btn').addEventListener('click', async () => {
@@ -635,7 +641,12 @@
           cue.micPcm(e.data);
         };
         source.connect(micWorklet);
-        // Don't connect to destination — we just capture, don't play
+        // A zero-gain sink keeps the graph processing on both Chromium audio
+        // backends without playing the captured microphone through speakers.
+        const sink = audioCtx.createGain(); sink.gain.value = 0;
+        micWorklet.connect(sink); sink.connect(audioCtx.destination);
+        micWorklet._sink = sink;
+        if (audioCtx.state === 'suspended') await audioCtx.resume();
         cue.log('mic AudioWorklet processor attached');
       } catch (workletErr) {
         // Fallback to ScriptProcessor if AudioWorklet fails (shouldn't happen in Electron 33+)
@@ -680,6 +691,7 @@
         micWorklet.node.disconnect(); micWorklet.sink.disconnect();
       } else {
         micWorklet.disconnect();
+        if (micWorklet._sink) micWorklet._sink.disconnect();
       }
       micWorklet = null;
     }
@@ -698,23 +710,39 @@
     if (!navigator.mediaDevices || typeof navigator.mediaDevices.getDisplayMedia !== 'function') {
       cue.log('system audio unavailable: getDisplayMedia not supported');
       showStatus('Meeting audio capture is not available on this device build.');
+      sysStarting = false;
       return;
     }
     try {
       const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
 
-      stream.getVideoTracks().forEach((t) => t.stop()); // we only want the audio
       const tracks = stream.getAudioTracks();
       if (!tracks.length) {
         cue.log('system audio: no loopback track on this platform');
         stream.getTracks().forEach((t) => t.stop());
         showStatus(cue.platform === 'win32'
-          ? 'No system-audio loopback track detected. Make sure "Share audio" is checked in the screen share dialog, and that your audio device is not in exclusive mode.'
-          : 'No system-audio loopback track detected. Meeting audio needs macOS 14.4+ — your screen and microphone still work.');
+          ? 'No Windows loopback track was available. Play audio through the default output device and make sure no app has it in exclusive mode.'
+          : 'No system-audio track was available. On macOS 13+, allow Screen & System Audio Recording and enable audio in the system picker.');
         return;
       }
       sysStream = stream;
       sysCtx = new AudioContext({ sampleRate: 16000 });
+      const track = tracks[0];
+      cue.log('system audio track: label=' + (track.label || '(none)') + ' state=' + track.readyState + ' muted=' + track.muted);
+      if (track.readyState === 'ended') {
+        stopSystemAudio();
+        showStatus('The desktop-audio track ended immediately. Check system-audio recording permission, then try again.');
+        return;
+      }
+      track.addEventListener('ended', () => {
+        if (sysStream !== stream) return;
+        stopSystemAudio();
+        showStatus('Desktop-audio capture stopped. Start listening again to reconnect it.');
+      }, { once: true });
+
+      // Keep the video track alive even though cue never renders its frames.
+      // On macOS the ScreenCaptureKit audio session can end when its associated
+      // display track is stopped.
 
       // Use AudioWorklet for system audio too
       try {
@@ -725,6 +753,10 @@
           cue.systemPcm(e.data);
         };
         source.connect(sysWorklet);
+        const sink = sysCtx.createGain(); sink.gain.value = 0;
+        sysWorklet.connect(sink); sink.connect(sysCtx.destination);
+        sysWorklet._sink = sink;
+        if (sysCtx.state === 'suspended') await sysCtx.resume();
         cue.log('system audio: AudioWorklet capturing loopback');
       } catch (workletErr) {
         // Fallback to ScriptProcessor
@@ -741,6 +773,7 @@
         };
         sysWorklet = { _legacy: true, proc: sysProc, node: sysNode, sink };
       }
+      showToast('Desktop audio connected', 2500);
     } catch (err) {
       const message = err && err.message ? err.message : String(err);
       cue.log('system audio error: ' + message);
@@ -756,11 +789,14 @@
         sysWorklet.node.disconnect(); sysWorklet.sink.disconnect();
       } else {
         sysWorklet.disconnect();
+        if (sysWorklet._sink) sysWorklet._sink.disconnect();
       }
       sysWorklet = null;
     }
     if (sysCtx) { sysCtx.close(); sysCtx = null; }
-    if (sysStream) { sysStream.getTracks().forEach((t) => t.stop()); sysStream = null; }
+    const stream = sysStream;
+    sysStream = null;
+    if (stream) stream.getTracks().forEach((t) => t.stop());
   }
 
   // ---- STT / VAD status helpers ------------------------------------------
@@ -1683,7 +1719,7 @@
     {
       icon: '✨',
       title: 'You’re all set',
-      body: 'How to use cue:<ul><li>' + assistShortcut + ' — <strong>Assist</strong> with whatever\'s on screen or being said</li><li>' + solveShortcut + ' — solve a coding problem on screen</li><li>Click <strong>▢</strong> in the top bar to start listening to a meeting</li><li>Type a question and press <span class="kbd">↵</span></li></ul>Reopen this guide anytime by clicking the <strong>cue logo</strong>. Quit with ' + quitShortcut + '.'
+      body: 'How to use cue:<ul><li>' + assistShortcut + ' — <strong>Screenshot</strong> uses your screen and the entire conversation</li><li>' + solveShortcut + ' — solve a coding problem on screen</li><li>Click <strong>▢</strong> in the top bar to start listening to a meeting</li><li>Type a question and press <span class="kbd">↵</span></li></ul>Reopen this guide anytime by clicking the <strong>cue logo</strong>. Quit with ' + quitShortcut + '.'
     }
   ];
   let obIndex = 0;
@@ -1744,7 +1780,7 @@
 
     // Fix placeholder shortcut hint to match platform
     if (isWindows) {
-      placeholder.innerHTML = 'Ask about your screen or conversation, or <span class="keycap">Ctrl</span><span class="keycap">⏎</span> for Assist';
+      placeholder.innerHTML = 'Ask about your screen or conversation, or <span class="keycap">Ctrl</span><span class="keycap">⏎</span> for Screenshot';
     }
 
     const st = await cue.captureState();
