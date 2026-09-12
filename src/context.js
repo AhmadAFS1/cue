@@ -15,7 +15,8 @@ function buildContext(state) {
     userText,
     profile: settings.context || '',
     smart: !!settings.smart,
-    memory: state.memory || []
+    memory: state.memory || [],
+    conversationSummary: state.conversationSummary || ''
   };
 }
 
@@ -38,7 +39,7 @@ function buildUserTurn(def, ctx) {
   const mode = def.key || Object.keys(MODES).find((key) => MODES[key] === def);
   const window = windowFor(mode);
   const transcript = window ? getRecent(ctx.transcript, window) : ctx.transcript;
-  return def.build({ transcript, userText: ctx.userText, memory: ctx.memory });
+  return def.build({ transcript, conversationSummary: ctx.conversationSummary, userText: ctx.userText, memory: ctx.memory });
 }
 
 // How much of the conversation to include per mode (turns).

@@ -169,7 +169,7 @@
   const composer = $('#composer');
 
   // ========== SMART AUTO-FILL SYSTEM ==========
-  // Track whether the current input text came from STT auto-fill (Them channel)
+  // Track whether the current input text came from STT auto-fill (interviewer channel)
   let inputFromSTT = false;
   let sttFillTimer = null;
   let questionFinalizeTimer = null;
@@ -577,6 +577,7 @@
 
   const shortcutLabel = (accelerator) => accelerator
     .replace('CommandOrControl', isMac ? '⌘' : 'Ctrl')
+    .replace('Control', isMac ? '⌃' : 'Ctrl')
     .replace('Alt', isMac ? '⌥' : 'Alt').replace('Shift', isMac ? '⇧' : 'Shift')
     .replace('Return', 'Enter').replace('Left', '←').replace('Right', '→')
     .replace('Up', '↑').replace('Down', '↓').replaceAll('+', isMac ? ' ' : ' + ');
@@ -586,7 +587,7 @@
     const label = state.expanded ? 'Restore' : 'Expand';
     $('#expand-btn .expand-label').textContent = label;
     $('#expand-btn .expand-icon').innerHTML = icon(state.expanded ? 'restore' : 'expand', { size: 14 });
-    $('#expand-btn').title = label + ' window · ' + shortcutLabel('CommandOrControl+Alt+Return');
+    $('#expand-btn').title = label + ' window · ' + shortcutLabel('Control+Alt+Return');
     $('#expand-btn').setAttribute('aria-pressed', String(state.expanded));
     $('#window-size').textContent = `${state.bounds.width} × ${state.bounds.height}`;
   }
@@ -924,10 +925,7 @@
   // ---- transcript history sidebar (hidden by default, manual toggle) ----
   let tsSidebarInterimEl = null;
   let sidebarOpen = false;
-  // Track last committed row per channel — all chunks from same speaker go in one row
-  const tsLastRow = { you: null, them: null };
-  const tsRowTimer = { you: null, them: null };
-  const TS_SENTENCE_GAP_MS = 10000; // 10s silence = new row
+  const speakerLabel = (channel) => channel === 'them' ? 'Interviewer' : 'You';
 
   function showSidebar() {
     const sidebar = document.getElementById('transcript-sidebar');
@@ -992,7 +990,7 @@
         tsSidebarInterimEl.className = 'ts-turn ts-' + channel + ' ts-interim-row';
         const chLabel = document.createElement('span');
         chLabel.className = 'ts-channel';
-        chLabel.textContent = channel === 'them' ? 'Them' : 'You';
+        chLabel.textContent = speakerLabel(channel);
         const txt = document.createElement('span');
         txt.className = 'ts-text ts-interim';
         tsSidebarInterimEl.appendChild(chLabel);
@@ -1004,42 +1002,19 @@
       // Remove interim row
       if (tsSidebarInterimEl) { tsSidebarInterimEl.remove(); tsSidebarInterimEl = null; }
 
-      const existingRow = tsLastRow[channel];
-      const useExisting = existingRow && existingRow.isConnected;
+      const row = document.createElement('div');
+      row.className = 'ts-turn ts-' + channel;
 
-      if (useExisting) {
-        // Append to existing row — accumulates sentence fragments
-        const txt = existingRow.querySelector('.ts-text');
-        if (txt) {
-          txt.textContent = txt.textContent ? txt.textContent + ' ' + text : text;
-        }
-      } else {
-        // Start a new row (no buttons — just clean history view)
-        const row = document.createElement('div');
-        row.className = 'ts-turn ts-' + channel;
+      const chLabel = document.createElement('span');
+      chLabel.className = 'ts-channel';
+      chLabel.textContent = speakerLabel(channel);
 
-        const chLabel = document.createElement('span');
-        chLabel.className = 'ts-channel';
-        chLabel.textContent = channel === 'them' ? 'Them' : 'You';
+      const txt = document.createElement('span');
+      txt.className = 'ts-text';
+      txt.textContent = text;
 
-        const txt = document.createElement('span');
-        txt.className = 'ts-text';
-        txt.textContent = text;
-
-        row.appendChild(chLabel);
-        row.appendChild(txt);
-        list.appendChild(row);
-        tsLastRow[channel] = row;
-      }
-
-      // Reset silence timer
-      clearTimeout(tsRowTimer[channel]);
-      tsRowTimer[channel] = setTimeout(() => { tsLastRow[channel] = null; }, TS_SENTENCE_GAP_MS);
-
-      // When THIS channel speaks, reset the OTHER channel's row
-      const other = channel === 'you' ? 'them' : 'you';
-      clearTimeout(tsRowTimer[other]);
-      tsLastRow[other] = null;
+      row.append(chLabel, txt);
+      list.appendChild(row);
 
       list.scrollTop = list.scrollHeight;
     }
@@ -1049,8 +1024,6 @@
     const list = document.getElementById('ts-list');
     if (list) list.innerHTML = '<div class="ts-placeholder">Conversation history will appear here when listening.</div>';
     tsSidebarInterimEl = null;
-    tsLastRow.you = null; tsLastRow.them = null;
-    clearTimeout(tsRowTimer.you); clearTimeout(tsRowTimer.them);
   }
 
   // ---- events from main --------------------------------------------------
@@ -1132,7 +1105,7 @@
   cue.on('stt:interim', ({ channel, text }) => {
     setLiveDotState('transcribing');
     const el = getOrCreateInterimEl();
-    const label = channel === 'them' ? 'Them' : 'You';
+    const label = speakerLabel(channel);
     el.textContent = `${label}: ${text}`;
     el.classList.add('show');
     appendTranscriptHistoryTurn(channel, text, true); // update sidebar interim
@@ -1231,7 +1204,7 @@
   cue.on('transcript', ({ channel, text }) => {
     if (!text || text.trim().length < 2 || /^[?!.,;:\-…]+$/.test(text.trim())) return;
     appendTranscriptHistoryTurn(channel, text, false);
-    // Auto-fill the input box with Them (interviewer) speech
+    // Auto-fill the input box with interviewer speech.
     if (channel === 'them') {
       cancelSoftClear(); // Interviewer is speaking, cancel any pending clear
       autoFillInputFromSTT(text);
@@ -1880,8 +1853,10 @@
     // R4: shortcut hints
     const sayHintEl = document.getElementById('say-shortcut-hint');
     const assistHintEl = document.getElementById('assist-shortcut-hint');
+    const movementModifiers = document.getElementById('movement-modifiers');
     if (sayHintEl) sayHintEl.textContent = isWindows ? 'Ctrl+↵' : '⌘↵';
     if (assistHintEl) assistHintEl.textContent = isWindows ? 'Ctrl+Shift+↵' : '⌘⇧↵';
+    if (movementModifiers) movementModifiers.textContent = isWindows ? 'Ctrl Alt' : '⌃⌥';
 
     // R5: prep status
     updatePrepStatus();

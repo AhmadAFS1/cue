@@ -115,3 +115,26 @@ This is the working handoff and progress log. Read it before resuming changes an
 
 - Updated the answer-generating modes (Screenshot, What should I say?, Ask, and Answer This) to produce a **Say this** section first: an informal first-person answer of 2–3 sentences that can be read verbatim. A **Details** section follows with concise non-repetitive bullets.
 - Follow-up Questions, Recap, and LeetCode retain their specialized formats. Automated tests: 149/149 pass.
+
+## Speaker roles, response detail, and movement controls
+
+- Transcript presentation and all prompt builders now use explicit `Interviewer` and `You` labels. The existing source routing remains automatic: system/desktop PCM is the interviewer channel and microphone PCM is the candidate channel.
+- Answer prompts now request a 3–5 sentence spoken response followed by 6–10 substantive detail bullets covering mechanics, reasoning, examples, and tradeoffs. Follow-up and recap prompts also request more specific detail.
+- Added a focused-window keyboard fallback for Command/Control + Option/Alt movement, resize, center, and expand shortcuts while preserving the global shortcut registrations for use over other applications.
+- Added a compact bottom movement strip that displays the modifier chord and provides accessible, clickable 40-pixel arrow controls.
+- Source validation passed: 151/151 tests, JavaScript syntax checks, and `git diff --check`.
+- Restored the certificate-signed runtime after an earlier ad-hoc local replacement and installed this update with `npm run install:mac -- --resources-only`. Signature continuity verification passed and Cue relaunched. Native physical-key validation over another foreground app remains distinct from automated key-mapping coverage.
+- Per the user's simplified macOS binding request, all window controls now use Control + Option rather than Command + Option. Movement is exactly Control + Option + Arrow; the bottom strip displays `⌃⌥` without a plus sign. The focused-key tests and full suite pass (151/151), the stable-signing resource install completed, the installed sources were verified, and Cue was relaunched successfully. Installed-app validation confirmed the footer and Control/Option tooltip are visible; an automated focused `Control+Option+Left` moved the saved x-position from 530 to 490 (one 40-pixel step). This validates the focused fallback, not a physical global keypress over another foreground app.
+
+## Rolling transcript memory and timeout protection
+
+- Replaced unbounded full-transcript prompt injection with rolling conversation memory. After 24 captured turns, Cue asynchronously merges the older 14 turns into a compact summary and retains the newest 10 turns verbatim; later compactions fold the prior summary forward.
+- Every live request is independently bounded to the latest completed summary (maximum 6,000 characters) plus at most 24 unsummarized recent turns and roughly 12,000 transcript characters. The answer path never waits for background summarization, so summary-provider latency cannot freeze the live request.
+- Background summary calls have a 20-second maintenance timeout, use a 700-token response ceiling, preserve `Interviewer`/`You` roles, and treat transcript content as untrusted reference data. Failure leaves the live prompt capped and is retried on a later turn/request without logging transcript content.
+- Clearing the transcript resets the rolling summary, sequence tracking, and invalidates any in-flight summary result. Automated coverage includes the compaction threshold, retained tail, sequence filtering, speaker roles, summary prompt safety, and strict character ceiling. Source validation passes: 157/157 tests, JavaScript syntax checks, and `git diff --check`.
+- Installed the rolling-memory build with `npm run install:mac -- --resources-only`; stable Apple Development signature verification passed and the installed app contains `src/conversation-memory.js`. The automation shell exports `ELECTRON_RUN_AS_NODE=1`, which made its first relaunch checks exit as a Node process; relaunching with that automation-only variable removed started the installed bundle normally. Cue main and helper processes are running from `/Applications/cue.app`.
+
+## Commit handoff
+
+- Prepared all current source, test, and documentation changes for the user's requested commit and push on `codex/window-controls`. Revalidated 157/157 automated tests, changed JavaScript syntax, and diff whitespace; the changed-file credential-pattern scan found no matches.
+- The subsequent API-latency investigation was analysis-only; additional latency optimizations have not been implemented in this changeset.

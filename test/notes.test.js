@@ -10,7 +10,7 @@ const transcript = [
 
 test('buildNotesPrompt formats speakers and preserves order', () => {
   const p = buildNotesPrompt(transcript);
-  assert.ok(p.includes('Them: We need to launch by Friday.'));
+  assert.ok(p.includes('Interviewer: We need to launch by Friday.'));
   assert.ok(p.includes('You: I can handle the API work.'));
   assert.ok(p.includes('Action Items:'));
 });

@@ -23,10 +23,10 @@ cue floats a small glass panel on top of everything. It takes **three separate i
 
 | Feature | How to trigger | What it uses |
 |---|---|---|
-| **Screenshot** | `⌘` `Shift` `↵` (macOS) or `Ctrl` `Shift` `Enter` (Windows) | your screen + entire conversation |
+| **Screenshot** | `⌘` `Shift` `↵` (macOS) or `Ctrl` `Shift` `Enter` (Windows) | your screen + rolling conversation memory |
 | **What should I say?** | `⌘` `↵` (macOS) or `Ctrl` `Enter` (Windows) | meeting audio + your mic |
-| **Follow-up questions** | button | the whole conversation |
-| **Recap** | button | the whole conversation |
+| **Follow-up questions** | button | rolling conversation memory |
+| **Recap** | button | rolling conversation memory |
 | **Ask anything** | type + `↵` | your screen + conversation |
 | **Solve a coding problem** | `⌘` `H` (macOS) or `Ctrl` `H` (Windows) | your screen only |
 | **Smart** toggle | pill in the box | switches to a smarter (slower) model |
@@ -167,14 +167,16 @@ cue is hidden from most screen-share tools automatically — **Google Meet, Micr
 
 The **Expand** button in the top bar enlarges the panel; **Restore** returns to its previous size and position. You can also drag the grip at the bottom-right of the panel to resize it. The response area grows with the window, and position and size survive an app restart.
 
+A compact control strip at the bottom of the overlay shows the movement chord and provides clickable arrow buttons. The same key handling also works while Cue itself is focused, in addition to the global shortcuts used while another app has focus.
+
 These shortcuts work while another application has focus:
 
 | Action | macOS | Windows / Linux |
 |---|---|---|
-| Move in 40-pixel steps | `⌘⌥` + arrow keys | `Ctrl+Alt` + arrow keys |
-| Adjust width / height | `⌘⌥⇧` + arrow keys | `Ctrl+Alt+Shift` + arrow keys |
-| Expand / restore | `⌘⌥Return` | `Ctrl+Alt+Enter` |
-| Center on the current screen | `⌘⌥C` | `Ctrl+Alt+C` |
+| Move in 40-pixel steps | `⌃⌥` and an arrow key | `Ctrl Alt` and an arrow key |
+| Adjust width / height | `⌃⌥⇧` and an arrow key | `Ctrl Alt Shift` and an arrow key |
+| Expand / restore | `⌃⌥Return` | `Ctrl Alt Enter` |
+| Center on the current screen | `⌃⌥C` | `Ctrl Alt C` |
 
 For resizing, Left narrows, Right widens, Up shortens, and Down makes the panel taller. Window controls keep the overlay inside the current display's usable area. Drag it to another display to move between monitors.
 
@@ -183,7 +185,7 @@ For resizing, Left narrows, Right widens, Up shortens, and Down makes the panel 
 > On Windows, press **`Ctrl`** wherever **`⌘`** appears below. cue's own UI relabels the keys to match your OS.
 
 - **`⌘` `↵` — What should I say?** Suggests what to say next from the conversation.
-- **`⌘` `⇧` `↵` — Screenshot.** The do-the-smart-thing key. It uses your screen and the entire conversation; on a coding problem it solves it, and in a conversation it tells you what to say. Works from anywhere.
+- **`⌘` `⇧` `↵` — Screenshot.** The do-the-smart-thing key. It uses your screen and rolling conversation memory; on a coding problem it solves it, and in a conversation it tells you what to say. Works from anywhere.
 - **`⌘` `H` — Solve what's on screen.** Screenshots a coding problem and returns the approach, code, and time/space complexity.
 - **The `▢` button** (top bar) — start/stop **listening** to a meeting. The green dot means it's live.
 - **Type a question** in the box and press `↵` to ask about your screen or conversation.
@@ -204,6 +206,8 @@ cue is an [Electron](https://www.electronjs.org/) app. Everything runs locally e
 - **Meeting audio ("Them")** — `getDisplayMedia` loopback capture of your system's output audio, kept on its own channel so cue knows *who* said what. **Windows only** — Chromium doesn't implement loopback capture elsewhere, so on macOS this stream comes back video-only and the channel stays silent.
 
 Both audio streams are transcribed by the independently selected speech provider (local whisper.cpp, Deepgram, OpenAI, or Gemini) and fed, with an optional screenshot, to your chat model. Responses **stream** into the panel word-by-word.
+
+Long conversations use rolling memory instead of attaching an ever-growing raw transcript to every request. After 24 captured turns, Cue summarizes the older portion in the background and keeps the newest 10 turns verbatim. Live requests never wait for that maintenance call: they use the latest completed summary plus at most 24 recent turns, with a hard transcript ceiling of roughly 12,000 characters. Clearing the transcript also clears its rolling summary.
 
 When Local transcription is selected, Cue runs one persistent `whisper-server` sidecar bound to `127.0.0.1` on a temporary port with a random request path. Voice activity detection creates bounded in-memory utterances with pre-roll, and both channels share a serialized inference queue because one Whisper context must not process concurrent requests. Stop immediately ends new audio capture, drains the current queue for a bounded period, then terminates the sidecar.
 

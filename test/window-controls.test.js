@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { WindowControls, fitBounds, initialBounds } = require('../src/window-controls');
-const { WINDOW_SHORTCUTS, registerWindowShortcuts } = require('../src/window-shortcuts');
+const { WINDOW_SHORTCUTS, registerWindowShortcuts, actionForKeyInput } = require('../src/window-shortcuts');
 
 const area = { x: 0, y: 25, width: 1440, height: 850 };
 function fixture(settings = {}, initial = { x: 200, y: 80, width: 700, height: 600 }) {
@@ -115,4 +115,13 @@ test('global window shortcut collisions are visible and do not prevent other reg
   callbacks.get(WINDOW_SHORTCUTS.taller.accelerator)();
   assert.deepEqual(commands, ['moveLeft', 'taller']);
   assert.equal(new Set(Object.values(WINDOW_SHORTCUTS).map(s => s.accelerator)).size, 10);
+});
+
+test('focused key input maps the displayed movement and resize shortcuts', () => {
+  assert.equal(actionForKeyInput({ type: 'keyDown', control: true, alt: true, key: 'ArrowLeft' }, 'darwin'), 'moveLeft');
+  assert.equal(actionForKeyInput({ type: 'keyDown', control: true, alt: true, key: 'ArrowDown' }, 'darwin'), 'moveDown');
+  assert.equal(actionForKeyInput({ type: 'keyDown', control: true, alt: true, shift: true, key: 'ArrowRight' }, 'darwin'), 'wider');
+  assert.equal(actionForKeyInput({ type: 'keyDown', control: true, alt: true, key: 'ArrowUp' }, 'win32'), 'moveUp');
+  assert.equal(actionForKeyInput({ type: 'keyDown', control: true, alt: true, key: 'c' }, 'win32'), 'center');
+  assert.equal(actionForKeyInput({ type: 'keyDown', meta: true, alt: true, key: 'ArrowLeft' }, 'darwin'), null);
 });

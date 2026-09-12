@@ -1,6 +1,15 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { MODES } = require('../src/prompts');
+const { MODES, formatTranscript } = require('../src/prompts');
+
+test('transcript labels preserve interviewer and candidate roles', () => {
+  const text = formatTranscript([
+    { channel: 'them', text: 'What is the difference between JDK and JRE?' },
+    { channel: 'you', text: 'The JDK includes development tools.' }
+  ]);
+  assert.match(text, /^Interviewer: What is the difference/m);
+  assert.match(text, /\nYou: The JDK includes/);
+});
 
 test('assist mode gives a direct answer in first person', () => {
   const system = MODES.assist.buildSystem(null);
@@ -52,7 +61,7 @@ test('answer modes provide a short spoken answer followed by detailed bullets', 
   for (const mode of ['assist', 'say', 'ask', 'answerThis']) {
     const system = MODES[mode].buildSystem(null);
     assert.match(system, /Say this:/i, mode + ' should include a spoken section');
-    assert.match(system, /2–3 sentence/i, mode + ' should limit the spoken section');
+    assert.match(system, /3–5 sentence/i, mode + ' should provide a complete spoken section');
     assert.match(system, /Details:.*bullet/i, mode + ' should include detailed bullets');
   }
 });
@@ -74,13 +83,14 @@ test('leetcode mode never applies AI rules (coding answers stay strict)', () => 
   assert.match(withRules, /competitive programmer/);
 });
 
-test('screenshot mode includes the entire transcript', () => {
+test('screenshot mode combines rolling summary with the bounded transcript supplied to it', () => {
   const transcript = Array.from({ length: 20 }, (_, i) => ({
     channel: i % 2 ? 'you' : 'them',
     text: `turn-${i + 1}`
   }));
-  const text = MODES.assist.build({ transcript, userText: '' });
-  assert.match(text, /Entire conversation so far/);
-  assert.ok(text.includes('turn-1'), 'first transcript turn should not be truncated');
+  const text = MODES.assist.build({ transcript, conversationSummary: 'Earlier discussion was condensed here.', userText: '' });
+  assert.match(text, /Conversation memory/);
+  assert.match(text, /Earlier discussion was condensed here/);
+  assert.ok(text.includes('turn-1'), 'prompt builder should preserve the already-bounded input it receives');
   assert.ok(text.includes('turn-20'), 'latest transcript turn should be included');
 });

@@ -173,7 +173,7 @@ button:focus { outline: none; }
 /* ============================ Messages ============================ */
 #messages { display: flex; flex: 1; min-height: 0; flex-direction: column; overflow-y: auto; }
 #messages > * { flex-shrink: 0; }
-#action-row, #composer, #prep-status { flex-shrink: 0; }
+#action-row, #composer, #prep-status, #movement-footer { flex-shrink: 0; }
 #resize-grip {
   position: absolute; right: 1px; bottom: 1px; width: 24px; height: 24px;
   border: 0; border-radius: 0 0 18px 0; background: transparent; cursor: nwse-resize;
@@ -808,6 +808,40 @@ button:focus { outline: none; }
 }
 .prep-item.loaded { color: rgba(34,197,94,0.9); border-color: rgba(34,197,94,0.25); background: rgba(34,197,94,0.08); }
 .prep-item.missing { color: var(--tx-mut); opacity: 0.55; }
+
+.movement-footer {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 36px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--bd-hair);
+  color: var(--tx-mut);
+  font-size: 11px;
+}
+.movement-label { color: var(--tx-2); font-weight: 600; }
+.movement-footer > kbd {
+  color: var(--tx-2);
+  font: 600 11px var(--font);
+  white-space: nowrap;
+}
+.movement-buttons { display: flex; gap: 4px; }
+.movement-buttons button {
+  width: 32px;
+  height: 32px;
+  border: 1px solid rgba(255,255,255,0.14);
+  border-radius: 7px;
+  background: rgba(255,255,255,0.05);
+  color: var(--tx-1);
+  font: 600 15px var(--font);
+  cursor: pointer;
+  transition: background 140ms ease, border-color 140ms ease;
+  -webkit-app-region: no-drag;
+}
+.movement-buttons button:hover { background: rgba(255,255,255,0.11); border-color: rgba(255,255,255,0.24); }
+.movement-buttons button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.movement-step { margin-left: auto; white-space: nowrap; }
 
 /* ============================ Response history ============================ */
 .response-group { display: flex; flex-direction: column; }

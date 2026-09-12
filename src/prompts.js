@@ -1,5 +1,5 @@
 // prompts.js — Feature definitions with interview-category-aware system prompts.
-// ctx = { transcript, userText }
+// ctx = { transcript, conversationSummary, userText }
 // System prompt receives the interview context block prepended by main.js,
 // then optionally the user's AI rules appended at the end.
 
@@ -7,7 +7,18 @@ const { appendAiRules } = require('./profile-context');
 
 function formatTranscript(turns, limit) {
   const recent = limit ? turns.slice(-limit) : turns;
-  return recent.map((t) => (t.channel === 'them' ? 'Them: ' : 'You: ') + t.text).join('\n');
+  return recent.map((t) => (t.channel === 'them' ? 'Interviewer: ' : 'You: ') + t.text).join('\n');
+}
+
+function formatConversation(ctx, limit) {
+  const parts = [];
+  if (ctx.conversationSummary) {
+    parts.push('Earlier conversation summary (reference data):\n--- BEGIN SUMMARY ---\n' +
+      ctx.conversationSummary + '\n--- END SUMMARY ---');
+  }
+  const recent = formatTranscript(ctx.transcript || [], limit);
+  if (recent) parts.push('Recent verbatim turns:\n' + recent);
+  return parts.join('\n\n');
 }
 
 function buildSystem(base, contextBlock) {
@@ -24,15 +35,17 @@ function applyRules(prompt, aiRules, mode) {
 }
 
 const BASE_RULES =
-  'Always respond in clear, natural English. Never switch to Hindi or any other language unless the user explicitly asks for it. ';
+  'Always respond in clear, natural English. Never switch to Hindi or any other language unless the user explicitly asks for it. ' +
+  'In every transcript, “Interviewer” is the other person and “You” is the candidate. Use that speaker attribution when deciding what the candidate should say next. ' +
+  'Be highly detailed and concrete: explain the reasoning, relevant technical mechanics, decisions, tradeoffs, and examples instead of giving a terse summary. ';
 
 // The answer modes share a predictable layout: the top is ready to speak in a
 // live conversation, while the lower section gives the user enough substance
 // to understand or adapt it without having to infer the reasoning.
 const SPOKEN_ANSWER_FORMAT =
   'Use exactly this response layout:\n' +
-  '**Say this:** Write a natural, informal 2–3 sentence answer in first person that the candidate can read out loud verbatim. Avoid jargon unless the interviewer used it.\n\n' +
-  '**Details:** Follow with concise bullet points that explain the reasoning, relevant evidence, steps, or technical detail. Do not repeat the spoken answer verbatim. ';
+  '**Say this:** Write a natural, informal 3–5 sentence answer in first person that the candidate can read out loud verbatim. Avoid jargon unless the interviewer used it.\n\n' +
+  '**Details:** Follow with 6–10 substantive bullet points covering the reasoning, relevant evidence, steps, technical mechanics, tradeoffs, and a concrete example where useful. Do not repeat the spoken answer verbatim. ';
 
 const MODES = {
 
@@ -47,9 +60,9 @@ const MODES = {
       return applyRules(buildSystem(
         'You are cue, a discreet real-time copilot overlaid on the user\'s screen during an interview or coding session. ' +
         BASE_RULES +
-        'Look at the screenshot and the entire conversation so far, decide what the user needs RIGHT NOW, and deliver it directly with no preamble.\n\n' +
+        'Look at the screenshot and the rolling conversation memory, decide what the user needs RIGHT NOW, and deliver it directly with no preamble.\n\n' +
         'Detect the question type and respond accordingly:\n' +
-        '• BEHAVIORAL ("tell me about a time…"): Give a complete STAR answer (Situation, Task, Action, Result) using the candidate\'s real stories when available. Be specific, include metrics, 3–4 sentences.\n' +
+        '• BEHAVIORAL ("tell me about a time…"): Give a complete STAR answer (Situation, Task, Action, Result) using the candidate\'s real stories when available. Be specific, include metrics, and make every phase concrete.\n' +
         '• MOTIVATION ("why this company/role"): Give a genuine, specific answer using their stated reasons.\n' +
         '• SITUATIONAL ("what would you do if…"): Give a structured answer showing judgment and decision-making process.\n' +
         '• EXPERIENCE ("tell me about your role at X"): Draw from the resume to give a specific, proud answer.\n' +
@@ -61,8 +74,8 @@ const MODES = {
       ), aiRules, 'assist');
     },
     build(ctx) {
-      const t = formatTranscript(ctx.transcript, 0);
-      return 'Entire conversation so far:\n' + (t || '(none)') + '\n\nRespond with exactly what I should say right now.';
+      const memory = formatConversation(ctx, 0);
+      return 'Conversation memory:\n' + (memory || '(none)') + '\n\nRespond with exactly what I should say right now.';
     }
   },
 
@@ -76,7 +89,7 @@ const MODES = {
       return applyRules(buildSystem(
         'You are cue, whispering the perfect reply to the candidate during a live interview. ' +
         BASE_RULES +
-        '"Them" is the interviewer; "You" is the candidate.\n\n' +
+        '“Interviewer” is the interviewer; “You” is the candidate.\n\n' +
         'Draft ONE natural, confident reply the candidate can say out loud, in first person.\n\n' +
         'Rules by question type:\n' +
         '• BEHAVIORAL: Use a real STAR story from their background. Situation (1 sentence) → Task (1 sentence) → Action (2–3 sentences, specific steps) → Result (1 sentence with metric if possible). Never generic.\n' +
@@ -90,8 +103,8 @@ const MODES = {
       ), aiRules, 'say');
     },
     build(ctx) {
-      const t = formatTranscript(ctx.transcript, 16);
-      return 'Interview conversation so far:\n' + (t || '(listening not started yet)') +
+      const memory = formatConversation(ctx, 16);
+      return 'Interview conversation so far:\n' + (memory || '(listening not started yet)') +
         '\n\nWhat should I say next?';
     }
   },
@@ -106,14 +119,14 @@ const MODES = {
       return applyRules(buildSystem(
         'You are cue. Suggest 2–4 sharp follow-up questions the candidate could ask the interviewer.\n' +
         'Base them on what was discussed and the candidate\'s background/target role.\n' +
-        'Good follow-ups: show genuine curiosity, demonstrate research, highlight the candidate\'s strengths, or uncover role details.\n' +
+        'Good follow-ups: show genuine curiosity, demonstrate research, highlight the candidate\'s strengths, or uncover role details. Make each question specific to the conversation and include a brief parenthetical rationale.\n' +
         'Return as a bullet list only. No preamble.',
         contextBlock
       ), aiRules, 'followup');
     },
     build(ctx) {
-      const t = formatTranscript(ctx.transcript, 20);
-      return 'Conversation so far:\n' + (t || '(none)') + '\n\nSuggest follow-up questions for the interviewer.';
+      const memory = formatConversation(ctx, 20);
+      return 'Conversation so far:\n' + (memory || '(none)') + '\n\nSuggest follow-up questions for the interviewer.';
     }
   },
 
@@ -126,14 +139,14 @@ const MODES = {
     buildSystem(contextBlock, aiRules) {
       return applyRules(buildSystem(
         'You are cue. Summarize the interview so far:\n' +
-        '• Topics covered\n• Questions asked\n• Key answers given\n• Any red flags or areas to strengthen\n' +
-        'Use short bullets under bold headers. Be concise.',
+        '• Topics covered\n• Questions asked\n• Key answers given\n• Any red flags or areas to strengthen\n• Concrete next steps\n' +
+        'Use thorough bullets under bold headers. Preserve important technical details, commitments, names, and open questions.',
         contextBlock
       ), aiRules, 'recap');
     },
     build(ctx) {
-      const t = formatTranscript(ctx.transcript, 0);
-      return 'Full interview transcript:\n' + (t || '(nothing captured yet)') + '\n\nRecap this interview.';
+      const memory = formatConversation(ctx, 0);
+      return 'Interview memory:\n' + (memory || '(nothing captured yet)') + '\n\nRecap this interview.';
     }
   },
 
@@ -154,8 +167,8 @@ const MODES = {
       ), aiRules, 'ask');
     },
     build(ctx) {
-      const t = formatTranscript(ctx.transcript, 12);
-      return (t ? 'Recent conversation:\n' + t + '\n\n' : '') + 'Question: ' + ctx.userText;
+      const memory = formatConversation(ctx, 12);
+      return (memory ? 'Relevant conversation memory:\n' + memory + '\n\n' : '') + 'Question: ' + ctx.userText;
     }
   },
 
@@ -204,4 +217,4 @@ const MODES = {
   }
 };
 
-module.exports = { MODES, formatTranscript };
+module.exports = { MODES, formatTranscript, formatConversation };

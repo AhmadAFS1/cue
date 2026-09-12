@@ -15,8 +15,13 @@ const { buildInterviewContext, detectCategory } = require('./src/interview-conte
 const { startAppLink, stopAppLink, recordEvent, appLinkConsentState, revokeAppLinkCaller } = require('./src/applink');
 const { buildDisplayMediaGrant, displayMediaHandlerOptions } = require('./src/display-media');
 const { WindowControls, initialBounds, MIN_WIDTH, MIN_HEIGHT } = require('./src/window-controls');
-const { WINDOW_SHORTCUTS, registerWindowShortcuts } = require('./src/window-shortcuts');
+const { WINDOW_SHORTCUTS, registerWindowShortcuts, actionForKeyInput } = require('./src/window-shortcuts');
 const { DEFAULTS: FEATURE_SHORTCUTS } = require('./src/shortcuts');
+const {
+  planCompaction,
+  buildSummaryRequest,
+  buildPromptMemory,
+} = require('./src/conversation-memory');
 
 // macOS system-audio loopback (the "them" channel via getDisplayMedia) does not
 // start on Electron 31–38 unless these Chromium features are enabled; without
@@ -54,15 +59,17 @@ const WIN_SUPPORTS_CONTENT_PROTECTION = !isWindows || WIN_BUILD >= 19041;
 
 let permWin = null;
 let startupComplete = false;
+let lastWindowKeyCommand = null;
 
 // -------- capture / transcript state --------
 const state = { capturing: false, busy: false, transcribing: { you: false, them: false } };
 let sttDisabled = false; // set when the key can't reach any speech model (stops retry spam)
 const buffers = { you: [], them: [] };
-const transcript = []; // { channel, text, ts } — capped at MAX_TRANSCRIPT_TURNS
+const transcript = []; // { channel, text, ts, seq } — capped at MAX_TRANSCRIPT_TURNS
 const MAX_TRANSCRIPT_TURNS = 200; // ~30–40 minutes of conversation at normal pace
 const FLUSH_MS = 900;
 const STREAM_INACTIVITY_MS = 25000; // abort a stalled LLM stream so state.busy can't wedge forever
+const SUMMARY_TIMEOUT_MS = 20000; // background only; never blocks a live answer
 const MIN_BYTES = Math.floor(16000 * 2 * 0.12); // ~0.12s
 const RMS_GATE = 180;
 let flushTimer = null;
@@ -71,6 +78,11 @@ let localWhisperTranscriber = null;
 let activeWhisperModelId = null;
 let desiredCaptureState = false;
 let captureTransition = Promise.resolve(false);
+let nextTranscriptSeq = 1;
+let conversationSummary = '';
+let lastSummarizedSeq = 0;
+let summaryTask = null;
+let memoryEpoch = 0;
 
 // -------- streaming STT state --------
 let streamingSTT = { you: null, them: null }; // streaming STT instances per channel
@@ -98,8 +110,59 @@ const ringBuffers = {
 };
 
 function pushTranscript(turn) {
-  transcript.push(turn);
+  const sequencedTurn = { ...turn, seq: nextTranscriptSeq++ };
+  transcript.push(sequencedTurn);
   if (transcript.length > MAX_TRANSCRIPT_TURNS) transcript.splice(0, transcript.length - MAX_TRANSCRIPT_TURNS);
+  // Compaction is intentionally fire-and-forget. Live answer requests always
+  // use a bounded prompt immediately and never wait on this maintenance call.
+  void maybeSummarizeTranscript();
+  return sequencedTurn;
+}
+
+function withTimeout(promise, timeoutMs, message) {
+  let timer = null;
+  const timeout = new Promise((_resolve, reject) => {
+    timer = setTimeout(() => reject(new Error(message)), timeoutMs);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
+async function maybeSummarizeTranscript() {
+  if (state.busy || summaryTask) return;
+  const plan = planCompaction(transcript, lastSummarizedSeq);
+  if (!plan) return;
+
+  const llm = createLLM(store.getSettings());
+  if (!llm.ready) return;
+
+  const epoch = memoryEpoch;
+  const request = buildSummaryRequest(conversationSummary, plan.sourceTurns);
+  const task = withTimeout(llm.stream({
+    system: request.system,
+    turns: [{ role: 'user', text: request.user }],
+    maxTokens: 700,
+    onToken: () => {},
+  }), SUMMARY_TIMEOUT_MS, 'rolling transcript summary timed out');
+  summaryTask = task;
+
+  try {
+    const updatedSummary = await task;
+    if (epoch !== memoryEpoch || !String(updatedSummary || '').trim()) return;
+    conversationSummary = String(updatedSummary).trim().slice(0, 6000);
+    lastSummarizedSeq = plan.throughSeq;
+  } catch (error) {
+    // The live prompt remains bounded even when maintenance fails, so report
+    // only metadata and quietly retry after a later turn/request.
+    recordEvent({
+      level: 'warn',
+      event: 'conversation_summary_failed',
+      msg: error && error.message ? error.message : String(error),
+      frame: 'maybeSummarizeTranscript',
+      context: { provider: store.getSettings().provider },
+    });
+  } finally {
+    if (summaryTask === task) summaryTask = null;
+  }
 }
 
 function send(channel, data) { if (win && !win.isDestroyed()) win.webContents.send(channel, data); }
@@ -275,6 +338,15 @@ function createWindow() {
         message: `Heads up: your Windows version (build ${WIN_BUILD}) does not support screen-share hiding. Upgrade to Windows 10 build 19041+ or Windows 11 to enable invisibility in screen shares.`
       });
     }
+  });
+  // Electron global shortcuts remain the primary path while another app is
+  // focused. This focused-window path covers macOS configurations that accept
+  // the registration but consume Option+Arrow before the global callback runs.
+  win.webContents.on('before-input-event', (event, input) => {
+    const action = actionForKeyInput(input, process.platform);
+    if (!action) return;
+    event.preventDefault();
+    runWindowCommand(action, 'focused-key');
   });
   win.webContents.on('render-process-gone', (_e, d) => {
     console.log('[cue] renderer gone', JSON.stringify(d));
@@ -506,7 +578,8 @@ async function runFeature(mode, userText) {
     const userBubble = def.userBubble !== null
       ? def.userBubble
       : (mode === 'ask' ? userText : mode === 'answerThis' ? `"${(userText || '').slice(0, 60)}${userText && userText.length > 60 ? '…' : ''}"` : null);
-    const category = mode !== 'leetcode' ? detectCategory(transcript) : null;
+    const promptMemory = buildPromptMemory(transcript, conversationSummary, lastSummarizedSeq);
+    const category = mode !== 'leetcode' ? detectCategory(promptMemory.transcript) : null;
     send('llm:start', { userBubble, small: !!def.small, category });
 
     if (!llm.ready) {
@@ -533,9 +606,9 @@ async function runFeature(mode, userText) {
     }
 
     const settingsForPrompt = store.getSettings();
-    const contextBlock = buildInterviewContext(settingsForPrompt, mode, transcript);
+    const contextBlock = buildInterviewContext(settingsForPrompt, mode, promptMemory.transcript);
     const system = def.buildSystem ? def.buildSystem(contextBlock, settingsForPrompt.aiRules || '') : (def.system || '');
-    const built = def.build({ transcript, userText: userText || '' });
+    const built = def.build({ ...promptMemory, userText: userText || '' });
 
     // Watchdog: a provider that stalls mid-stream would otherwise hang the await forever,
     // leaving state.busy = true and wedging every later question until an app restart.
@@ -569,6 +642,7 @@ async function runFeature(mode, userText) {
   } finally {
     streamSettled = true;
     state.busy = false;
+    void maybeSummarizeTranscript();
   }
 }
 
@@ -638,6 +712,10 @@ ipcMain.handle('platform:info', () => ({
 }));
 ipcMain.handle('transcript:clear', () => {
   transcript.splice(0, transcript.length);
+  conversationSummary = '';
+  lastSummarizedSeq = 0;
+  nextTranscriptSeq = 1;
+  memoryEpoch += 1;
   return { ok: true };
 });
 ipcMain.on('ask', (_e, payload) => runFeature(payload.mode, payload.text));
@@ -711,8 +789,14 @@ ipcMain.on('permissions:continue', async () => {
 });
 
 // -------- shortcuts --------
-function runWindowCommand(action) {
+function runWindowCommand(action, source = 'ipc') {
   if (!win || win.isDestroyed() || !windowControls) return null;
+  const now = Date.now();
+  if (lastWindowKeyCommand && lastWindowKeyCommand.action === action &&
+      lastWindowKeyCommand.source !== source && now - lastWindowKeyCommand.at < 80) {
+    return windowControls.getState();
+  }
+  lastWindowKeyCommand = { action, source, at: now };
   const result = windowControls.command(action);
   if (['expand', 'wider', 'narrower', 'taller', 'shorter'].includes(action)) send('panel:show', {});
   return result;
@@ -724,7 +808,7 @@ function registerShortcuts() {
   shortcutState.leetcode = globalShortcut.register('CommandOrControl+H', () => runFeature('leetcode', ''));
   shortcutState.hide = globalShortcut.register('CommandOrControl+Shift+/', () => send('hide:toggle', {}));
   shortcutState.quit = globalShortcut.register('CommandOrControl+Shift+X', () => app.quit());
-  Object.assign(shortcutState, registerWindowShortcuts(globalShortcut, runWindowCommand));
+  Object.assign(shortcutState, registerWindowShortcuts(globalShortcut, action => runWindowCommand(action, 'global-key')));
   for (const [name, wasRegistered] of Object.entries(shortcutState)) {
     if (!wasRegistered) {
       recordEvent({ level: 'warn', event: 'shortcut_unavailable', msg: 'another application holds the ' + name + ' shortcut', frame: 'registerShortcuts', context: { shortcut: name } });

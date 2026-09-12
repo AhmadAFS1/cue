@@ -84,7 +84,7 @@ const CATEGORY_PATTERNS = {
 
 function detectCategory(transcript) {
   if (!transcript || !transcript.length) return 'general';
-  // Look at the last 5 "Them" turns — the interviewer's recent questions
+  // Look at the last 5 interviewer turns — the interviewer's recent questions
   const recentThem = transcript
     .filter(t => t.channel === 'them')
     .slice(-5)

@@ -4,7 +4,7 @@
 
 // Build the user turn that asks the model to write structured notes.
 function buildNotesPrompt(transcript) {
-  const who = (t) => (t.channel === 'them' ? 'Them' : 'You');
+  const who = (t) => (t.channel === 'them' ? 'Interviewer' : 'You');
   const lines = transcript.map((t) => who(t) + ': ' + t.text).join('\n');
   return (
     'Meeting transcript:\n' +
