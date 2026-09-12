@@ -57,6 +57,16 @@ test('answer modes provide a short spoken answer followed by detailed bullets', 
   }
 });
 
+test('answer modes answer factual technical questions without resume context', () => {
+  for (const mode of ['assist', 'say', 'ask', 'answerThis']) {
+    const system = MODES[mode].buildSystem(null);
+    assert.match(system, /technical, conceptual, or fact-based/i, mode + ' should recognize factual questions');
+    assert.match(system, /reliable general knowledge/i, mode + ' should use general knowledge');
+    assert.match(system, /Never say "I do not know"/i, mode + ' should not refuse for missing profile context');
+    assert.match(system, /never invent personal experience/i, mode + ' should keep factual answers honest');
+  }
+});
+
 test('every non-leetcode mode returns the base prompt unchanged when no rules are set', () => {
   for (const [name, mode] of Object.entries(MODES)) {
     if (name === 'leetcode') continue;

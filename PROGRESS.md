@@ -121,3 +121,18 @@ This is the working handoff and progress log. Read it before resuming changes an
 - Live transcript bubbles now close after a 1.8-second pause. A later utterance from the same speaker starts a new bubble; switching speakers always closes the prior speaker's bubble.
 - A transcript bubble is also capped at 720 characters, so continuous receiver speech stays scannable even when endpointing produces several nearby final chunks. OpenAI realtime transcription now waits 1.2 seconds of silence before finalizing a turn, reducing sentence-fragment bubbles.
 - Automated tests: 150/150 pass. Installed the signed update with `npm run install:mac -- --resources-only`; Cue reopened normally. Live audio is not injected for a transcript visual check, so the pause behavior is validated by the renderer logic and STT configuration rather than a fabricated conversation.
+
+## Docked conversation history
+
+- Moved Conversation History inside the panel's two-column layout. On ordinary window sizes it is docked beside the assistant response; below 620px it stacks beneath it. It no longer uses a fixed overlay or shifts the response panel underneath itself.
+- Added layout regression tests; 152/152 tests pass. Installed the signed update and confirmed Conversation History appears as a docked panel while the response controls remain visible.
+
+## Transcript source labels
+
+- Fixed a shared-interim-row bug that could show system-audio text under the microphone label. The transcript now maintains independent live rows for both sources and labels finalized bubbles as **Me · microphone** and **Other person · system audio**.
+- The labels identify capture source, not voice-print diarization: if a call routes the user's own audio back through the system-audio device, that echoed copy is still correctly marked as system audio. Tests: 153/153 pass. Source changes are ready to commit and push.
+
+## Factual technical interview answers
+
+- Answer-generating modes now answer technical, conceptual, and factual interview questions from general knowledge even without resume context. They must not say “I do not know” simply because the candidate's materials do not cover the topic, while still not inventing personal experience.
+- Validated with the configured GPT Sol Fast model using “What is the difference between JDK and JRE?”; it returned a direct JDK/JRE explanation. Tests: 154/154 pass.

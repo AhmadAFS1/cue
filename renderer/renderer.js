@@ -922,7 +922,9 @@
   }
 
   // ---- transcript history sidebar (hidden by default, manual toggle) ----
-  let tsSidebarInterimEl = null;
+  // Keep an in-progress bubble for each physical audio source. A single shared
+  // row made system-audio interim text appear under the microphone's label.
+  const tsSidebarInterimEls = { you: null, them: null };
   let sidebarOpen = false;
   // Track last committed row per channel — all chunks from same speaker go in one row
   const tsLastRow = { you: null, them: null };
@@ -933,6 +935,11 @@
   // into one receiver row.
   const TS_SENTENCE_GAP_MS = 1800;
   const TS_MAX_BUBBLE_CHARS = 720;
+
+  function speakerLabel(channel, detail = false) {
+    if (channel === 'them') return detail ? 'Other person · system audio' : 'Other person';
+    return detail ? 'Me · microphone' : 'Me';
+  }
 
   function showSidebar() {
     const sidebar = document.getElementById('transcript-sidebar');
@@ -991,23 +998,26 @@
     if (ph) ph.remove();
 
     if (isInterim) {
-      // Update the single floating interim row
-      if (!tsSidebarInterimEl) {
-        tsSidebarInterimEl = document.createElement('div');
-        tsSidebarInterimEl.className = 'ts-turn ts-' + channel + ' ts-interim-row';
+      // Keep microphone and system-audio speech in separately labelled rows.
+      if (!tsSidebarInterimEls[channel]) {
+        const row = document.createElement('div');
+        row.className = 'ts-turn ts-' + channel + ' ts-interim-row';
         const chLabel = document.createElement('span');
         chLabel.className = 'ts-channel';
-        chLabel.textContent = channel === 'them' ? 'Them' : 'You';
+        chLabel.textContent = speakerLabel(channel, true);
         const txt = document.createElement('span');
         txt.className = 'ts-text ts-interim';
-        tsSidebarInterimEl.appendChild(chLabel);
-        tsSidebarInterimEl.appendChild(txt);
-        list.appendChild(tsSidebarInterimEl);
+        row.appendChild(chLabel);
+        row.appendChild(txt);
+        list.appendChild(row);
+        tsSidebarInterimEls[channel] = row;
       }
-      tsSidebarInterimEl.querySelector('.ts-text').textContent = text;
+      tsSidebarInterimEls[channel].querySelector('.ts-text').textContent = text;
     } else {
-      // Remove interim row
-      if (tsSidebarInterimEl) { tsSidebarInterimEl.remove(); tsSidebarInterimEl = null; }
+      // Finalize only this source's interim row; do not erase the other
+      // speaker while both audio sources are active.
+      const interimRow = tsSidebarInterimEls[channel];
+      if (interimRow) { interimRow.remove(); tsSidebarInterimEls[channel] = null; }
 
       const now = Date.now();
       const existingRow = tsLastRow[channel];
@@ -1029,7 +1039,7 @@
 
         const chLabel = document.createElement('span');
         chLabel.className = 'ts-channel';
-        chLabel.textContent = channel === 'them' ? 'Them' : 'You';
+        chLabel.textContent = speakerLabel(channel, true);
 
         const txt = document.createElement('span');
         txt.className = 'ts-text';
@@ -1064,7 +1074,10 @@
   function clearTranscriptSidebar() {
     const list = document.getElementById('ts-list');
     if (list) list.innerHTML = '<div class="ts-placeholder">Conversation history will appear here when listening.</div>';
-    tsSidebarInterimEl = null;
+    for (const channel of ['you', 'them']) {
+      tsSidebarInterimEls[channel]?.remove();
+      tsSidebarInterimEls[channel] = null;
+    }
     tsLastRow.you = null; tsLastRow.them = null;
     tsLastAt.you = 0; tsLastAt.them = 0;
     clearTimeout(tsRowTimer.you); clearTimeout(tsRowTimer.them);
@@ -1149,7 +1162,7 @@
   cue.on('stt:interim', ({ channel, text }) => {
     setLiveDotState('transcribing');
     const el = getOrCreateInterimEl();
-    const label = channel === 'them' ? 'Them' : 'You';
+    const label = speakerLabel(channel);
     el.textContent = `${label}: ${text}`;
     el.classList.add('show');
     appendTranscriptHistoryTurn(channel, text, true); // update sidebar interim

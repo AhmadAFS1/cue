@@ -78,23 +78,24 @@
             </div>
           </div>
 
+          <!-- Docked transcript history. It shares the panel's layout instead
+               of floating over the response area. -->
+          <aside id="transcript-sidebar" class="transcript-sidebar hidden" aria-label="Conversation history">
+            <div class="ts-header">
+              <span class="ts-title">Conversation History</span>
+              <button class="ts-close-btn" id="close-sidebar-btn" title="Close history">✕</button>
+            </div>
+            <div id="ts-list" class="ts-list">
+              <div class="ts-placeholder">Conversation history will appear here when listening.</div>
+            </div>
+            <div class="ts-footer">
+              <button class="ts-clear-btn" id="clear-transcript-btn" title="Clear all history">Clear History</button>
+            </div>
+          </aside>
+
         </div><!-- /panel-columns -->
       </div>
       <button id="resize-grip" title="Drag to resize; arrow keys adjust size" aria-label="Resize window"></button>
-    </div>
-
-    <!-- Transcript history sidebar — floats OUTSIDE main panel, toggled by history button -->
-    <div id="transcript-sidebar" class="transcript-sidebar hidden">
-      <div class="ts-header">
-        <span class="ts-title">Conversation History</span>
-        <button class="ts-close-btn" id="close-sidebar-btn" title="Close history">✕</button>
-      </div>
-      <div id="ts-list" class="ts-list">
-        <div class="ts-placeholder">Conversation history will appear here when listening.</div>
-      </div>
-      <div class="ts-footer">
-        <button class="ts-clear-btn" id="clear-transcript-btn" title="Clear all history">Clear History</button>
-      </div>
     </div>
   </div>
 

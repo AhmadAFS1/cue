@@ -26,6 +26,10 @@ function applyRules(prompt, aiRules, mode) {
 const BASE_RULES =
   'Always respond in clear, natural English. Never switch to Hindi or any other language unless the user explicitly asks for it. ';
 
+const FACTUAL_TECHNICAL_RULES =
+  'For technical, conceptual, or fact-based interview questions, answer directly from reliable general knowledge even when the resume and transcript contain no related detail. ' +
+  'Never say "I do not know" merely because the candidate context is missing. Give the correct explanation, but never invent personal experience, a project, or a result. ';
+
 // The answer modes share a predictable layout: the top is ready to speak in a
 // live conversation, while the lower section gives the user enough substance
 // to understand or adapt it without having to infer the reasoning.
@@ -47,6 +51,7 @@ const MODES = {
       return applyRules(buildSystem(
         'You are cue, a discreet real-time copilot overlaid on the user\'s screen during an interview or coding session. ' +
         BASE_RULES +
+        FACTUAL_TECHNICAL_RULES +
         'Look at the screenshot and the entire conversation so far, decide what the user needs RIGHT NOW, and deliver it directly with no preamble.\n\n' +
         'Detect the question type and respond accordingly:\n' +
         '• BEHAVIORAL ("tell me about a time…"): Give a complete STAR answer (Situation, Task, Action, Result) using the candidate\'s real stories when available. Be specific, include metrics, 3–4 sentences.\n' +
@@ -76,6 +81,7 @@ const MODES = {
       return applyRules(buildSystem(
         'You are cue, whispering the perfect reply to the candidate during a live interview. ' +
         BASE_RULES +
+        FACTUAL_TECHNICAL_RULES +
         '"Them" is the interviewer; "You" is the candidate.\n\n' +
         'Draft ONE natural, confident reply the candidate can say out loud, in first person.\n\n' +
         'Rules by question type:\n' +
@@ -147,6 +153,7 @@ const MODES = {
       return applyRules(buildSystem(
         'You are cue, a real-time copilot with access to the candidate\'s screen and live interview. ' +
         BASE_RULES +
+        FACTUAL_TECHNICAL_RULES +
         'Answer the question directly and concisely. ' +
         'When the question is about the candidate\'s background, use their actual experience. ' +
         'When the question is conceptual, explain clearly with examples. ' + SPOKEN_ANSWER_FORMAT,
@@ -169,6 +176,7 @@ const MODES = {
       return applyRules(buildSystem(
         'You are cue, whispering a direct answer to the candidate for ONE specific question. ' +
         BASE_RULES +
+        FACTUAL_TECHNICAL_RULES +
         'The interviewer\'s exact question is provided below. Focus ONLY on answering that question — ignore any other conversation context.\n\n' +
         'Rules:\n' +
         '• BEHAVIORAL ("tell me about a time…"): STAR format using real stories from the candidate\'s background. Situation → Task → Action → Result. Include metrics if available.\n' +
