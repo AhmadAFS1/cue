@@ -923,9 +923,24 @@
   }
 
   // ---- transcript history sidebar (hidden by default, manual toggle) ----
-  let tsSidebarInterimEl = null;
+  // Keep an in-progress bubble for each physical audio source. A single shared
+  // row made system-audio interim text appear under the microphone's label.
+  const tsSidebarInterimEls = { you: null, them: null };
   let sidebarOpen = false;
-  const speakerLabel = (channel) => channel === 'them' ? 'Interviewer' : 'You';
+  // Track last committed row per channel — all chunks from same speaker go in one row
+  const tsLastRow = { you: null, them: null };
+  const tsLastAt = { you: 0, them: 0 };
+  const tsRowTimer = { you: null, them: null };
+  // A completed STT turn after this quiet period starts a fresh bubble. This
+  // keeps a long interviewer answer readable instead of accumulating it all
+  // into one receiver row.
+  const TS_SENTENCE_GAP_MS = 1800;
+  const TS_MAX_BUBBLE_CHARS = 720;
+
+  function speakerLabel(channel, detail = false) {
+    if (channel === 'them') return detail ? 'Interviewer · system audio' : 'Interviewer';
+    return detail ? 'You · microphone' : 'You';
+  }
 
   function showSidebar() {
     const sidebar = document.getElementById('transcript-sidebar');
@@ -984,37 +999,74 @@
     if (ph) ph.remove();
 
     if (isInterim) {
-      // Update the single floating interim row
-      if (!tsSidebarInterimEl) {
-        tsSidebarInterimEl = document.createElement('div');
-        tsSidebarInterimEl.className = 'ts-turn ts-' + channel + ' ts-interim-row';
+      // Keep microphone and system-audio speech in separately labelled rows.
+      if (!tsSidebarInterimEls[channel]) {
+        const row = document.createElement('div');
+        row.className = 'ts-turn ts-' + channel + ' ts-interim-row';
         const chLabel = document.createElement('span');
         chLabel.className = 'ts-channel';
-        chLabel.textContent = speakerLabel(channel);
+        chLabel.textContent = speakerLabel(channel, true);
         const txt = document.createElement('span');
         txt.className = 'ts-text ts-interim';
-        tsSidebarInterimEl.appendChild(chLabel);
-        tsSidebarInterimEl.appendChild(txt);
-        list.appendChild(tsSidebarInterimEl);
+        row.appendChild(chLabel);
+        row.appendChild(txt);
+        list.appendChild(row);
+        tsSidebarInterimEls[channel] = row;
       }
-      tsSidebarInterimEl.querySelector('.ts-text').textContent = text;
+      tsSidebarInterimEls[channel].querySelector('.ts-text').textContent = text;
     } else {
-      // Remove interim row
-      if (tsSidebarInterimEl) { tsSidebarInterimEl.remove(); tsSidebarInterimEl = null; }
+      // Finalize only this source's interim row; do not erase the other
+      // speaker while both audio sources are active.
+      const interimRow = tsSidebarInterimEls[channel];
+      if (interimRow) { interimRow.remove(); tsSidebarInterimEls[channel] = null; }
 
-      const row = document.createElement('div');
-      row.className = 'ts-turn ts-' + channel;
+      const now = Date.now();
+      const existingRow = tsLastRow[channel];
+      const existingText = existingRow?.querySelector('.ts-text')?.textContent || '';
+      const useExisting = existingRow && existingRow.isConnected &&
+        now - tsLastAt[channel] < TS_SENTENCE_GAP_MS &&
+        existingText.length + text.length + 1 <= TS_MAX_BUBBLE_CHARS;
 
-      const chLabel = document.createElement('span');
-      chLabel.className = 'ts-channel';
-      chLabel.textContent = speakerLabel(channel);
+      if (useExisting) {
+        // Append to existing row — accumulates sentence fragments
+        const txt = existingRow.querySelector('.ts-text');
+        if (txt) {
+          txt.textContent = txt.textContent ? txt.textContent + ' ' + text : text;
+        }
+      } else {
+        // Start a new row (no buttons — just clean history view)
+        const row = document.createElement('div');
+        row.className = 'ts-turn ts-' + channel;
 
-      const txt = document.createElement('span');
-      txt.className = 'ts-text';
-      txt.textContent = text;
+        const chLabel = document.createElement('span');
+        chLabel.className = 'ts-channel';
+        chLabel.textContent = speakerLabel(channel, true);
 
-      row.append(chLabel, txt);
-      list.appendChild(row);
+        const txt = document.createElement('span');
+        txt.className = 'ts-text';
+        txt.textContent = text;
+
+        row.appendChild(chLabel);
+        row.appendChild(txt);
+        list.appendChild(row);
+        tsLastRow[channel] = row;
+      }
+
+      tsLastAt[channel] = now;
+
+      // Close this bubble after a meaningful pause. The next finalized turn
+      // becomes its own visible message bubble.
+      clearTimeout(tsRowTimer[channel]);
+      tsRowTimer[channel] = setTimeout(() => {
+        tsLastRow[channel] = null;
+        tsLastAt[channel] = 0;
+      }, TS_SENTENCE_GAP_MS);
+
+      // When THIS channel speaks, reset the OTHER channel's row
+      const other = channel === 'you' ? 'them' : 'you';
+      clearTimeout(tsRowTimer[other]);
+      tsLastRow[other] = null;
+      tsLastAt[other] = 0;
 
       list.scrollTop = list.scrollHeight;
     }
@@ -1023,7 +1075,13 @@
   function clearTranscriptSidebar() {
     const list = document.getElementById('ts-list');
     if (list) list.innerHTML = '<div class="ts-placeholder">Conversation history will appear here when listening.</div>';
-    tsSidebarInterimEl = null;
+    for (const channel of ['you', 'them']) {
+      tsSidebarInterimEls[channel]?.remove();
+      tsSidebarInterimEls[channel] = null;
+    }
+    tsLastRow.you = null; tsLastRow.them = null;
+    tsLastAt.you = 0; tsLastAt.them = 0;
+    clearTimeout(tsRowTimer.you); clearTimeout(tsRowTimer.them);
   }
 
   // ---- events from main --------------------------------------------------

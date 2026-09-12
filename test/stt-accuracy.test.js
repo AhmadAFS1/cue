@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert');
 const { looksLikeHallucination, buildVocabPrompt } = require('../src/stt');
-const { DeepgramStreamingSTT } = require('../src/stt-streaming');
+const { DeepgramStreamingSTT, OpenAIRealtimeSTT } = require('../src/stt-streaming');
 
 test('looksLikeHallucination drops Whisper silence artifacts', () => {
   ['', '   ', 'Thank you for watching.', 'thanks for watching', 'Bye-bye!', '👍👍'].forEach((s) => {
@@ -22,6 +22,12 @@ test('buildVocabPrompt seeds base vocab and resume proper nouns, capped', () => 
   assert.ok(p.length <= 850);
   assert.ok(buildVocabPrompt(undefined).length > 0);
   assert.ok(buildVocabPrompt({ resumeText: 'Xyzzy '.repeat(4000) }).length <= 850);
+});
+
+test('OpenAI realtime uses a readable pause before ending a transcript bubble', () => {
+  assert.equal(new OpenAIRealtimeSTT('k').silenceDurationMs, 1200);
+  assert.equal(new OpenAIRealtimeSTT('k', { silenceDurationMs: 300 }).silenceDurationMs, 500);
+  assert.equal(new OpenAIRealtimeSTT('k', { silenceDurationMs: 6000 }).silenceDurationMs, 5000);
 });
 
 test('Deepgram accumulates is_final segments into one turn at speech_final', () => {

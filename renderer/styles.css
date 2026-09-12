@@ -624,30 +624,16 @@ button:focus { outline: none; }
   min-width: 0; /* allow shrink */
 }
 
-/* Transcript history sidebar — floats OUTSIDE the main panel */
+/* Transcript history is docked inside the panel, never over its content. */
 .transcript-sidebar {
-  position: fixed;
-  top: 80px; /* below toolbar */
-  bottom: 20px;
-  /* FIX #6: Use right edge positioning instead of calc that assumes fixed width */
-  right: 20px;
-  width: 220px;
-  max-height: none;
-  min-height: 200px;
+  flex: 0 1 clamp(180px, 34%, 280px);
+  min-width: 180px;
+  margin-left: 16px;
+  padding-left: 16px;
+  border-left: 1px solid var(--bd-hair);
   display: flex;
   flex-direction: column;
-  
-  /* Glass styling to match main panel */
-  background: rgba(20,22,28,0.85);
-  -webkit-backdrop-filter: blur(40px) saturate(180%);
-  backdrop-filter: blur(40px) saturate(180%);
-  border: 1px solid var(--bd-hair);
-  border-radius: var(--r-16);
-  box-shadow: 0 12px 40px rgba(0,0,0,0.4), 0 2px 8px rgba(0,0,0,0.25), inset 0 1px 0 rgba(255,255,255,0.08);
-  padding: 14px;
-  
-  z-index: 10;
-  pointer-events: auto;
+  min-height: 0;
   animation: slideInRight 200ms cubic-bezier(0.22,1,0.36,1);
 }
 .transcript-sidebar.hidden { 
@@ -702,6 +688,7 @@ button:focus { outline: none; }
 
 /* Each transcript turn — clean, minimal */
 .ts-turn {
+  margin-top: 6px;
   padding: 6px 10px;
   border-radius: 8px;
   font-size: 12.5px;
@@ -729,6 +716,8 @@ button:focus { outline: none; }
   opacity: 0.5;
   margin-right: 6px;
 }
+.ts-you .ts-channel { color: rgba(147,197,253,0.95); opacity: 0.9; }
+.ts-them .ts-channel { color: rgba(196,181,253,0.95); opacity: 0.9; }
 .ts-text { display: inline; }
 .ts-interim { font-style: italic; opacity: 0.5; }
 
@@ -756,17 +745,17 @@ button:focus { outline: none; }
   color: #fca5a5;
 }
 
-/* Sidebar no longer widens panel — it floats outside */
-/* The history sidebar is position:fixed at right:20px and 220px wide. In a 700px
-   window the default 624px panel would sit underneath it, so narrow the panel and
-   shift it left while the sidebar is open. */
-#panel-wrap.sidebar-open {
-  width: calc(100% - 240px);
-  transform: translateX(-120px);
-}
-@media (max-width: 760px) {
-  #panel-wrap.sidebar-open { width: 100%; transform: none; }
-  .transcript-sidebar { width: min(300px, calc(100vw - 40px)); }
+@media (max-width: 620px) {
+  #panel-columns { flex-direction: column; }
+  #panel-main { min-height: 0; }
+  .transcript-sidebar {
+    flex: 1 1 42%;
+    min-width: 0;
+    margin: 14px 0 0;
+    padding: 14px 0 0;
+    border-left: 0;
+    border-top: 1px solid var(--bd-hair);
+  }
 }
 .window-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .window-shortcut-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 7px 0; border-bottom: 1px solid var(--bd-hair); font-size: 12px; }
