@@ -24,7 +24,7 @@ This is the working handoff and progress log. Read it before resuming changes an
 - After the user re-added the exact installed app, Cue successfully reopened to its main overlay, establishing that its startup checks recognize both required permissions. A subsequent full `npm run install:mac` preserved both permissions without another prompt and restored expanded-window state. Restore then returned exactly to x=619, y=128, 700 × 600. Evidence: `/tmp/cue-stable-update-validation.log` and `.cache/window-update-validation.json`.
 - `AGENTS.md` directs future work to read and update this log and use the stable local installer.
 - Permission cause confirmed by macOS TCC logs: “Failed to match existing code requirement for subject com.cue.overlay and service kTCCServiceScreenCapture.” The locally signed rebuild changes the code hash, while the visible enabled entry retains the previous hash. A refreshed grant plus full restart worked for the first window-controls build; the final permission-UX build needs its own refresh.
-- No commits or pushes have been made for these changes.
+- Source changes committed and pushed on `codex/window-controls` (implementation commit `d726580`).
 
 ## Completed installation and baseline validation
 
@@ -107,3 +107,6 @@ This is the working handoff and progress log. Read it before resuming changes an
 - Live OpenAI validation passed: mini-transcribe transcribed the official Whisper sample, and the realtime endpoint accepted its session configuration; explicit disconnect completed.
 - Installed update retained stable signing and opened normally with Master Career Resume, two references, Sol Fast, and the swapped shortcuts visible.
 - Native button validation found system-audio permission selection could hold the button disabled. Changed system-audio startup to run independently and added generation checks to discard streams arriving after Pause. Microphone transcription and Pause no longer wait on that picker. Tests remain 148/148 passing.
+
+- Final installed-app validation passed: Transcribe changed to Pause with STREAMING status; Pause returned to Transcribe and OFF. Left transcription paused. Live meeting-audio content and physical global-key detector behavior remain unverified.
+- All source changes pushed successfully to `origin/codex/window-controls`. Personal resume/reference files and API credentials remain outside Git.
