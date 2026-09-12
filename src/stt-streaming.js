@@ -16,7 +16,9 @@ const { CURRENT_GEMINI_DEFAULT } = require('./llm');
 class OpenAIRealtimeSTT {
   constructor(apiKey, options = {}) {
     this.apiKey = apiKey;
-    this.model = options.model || 'gpt-realtime-whisper';
+    this.model = options.model || 'gpt-4o-mini-transcribe';
+    this._stopped = false;
+    this._reconnectTimer = null;
     this.ws = null;
     this.connected = false;
     this.reconnecting = false;
@@ -33,6 +35,7 @@ class OpenAIRealtimeSTT {
 
   async connect() {
     if (this.ws && this.connected) return;
+    this._stopped = false;
 
     try {
       const WebSocket = require('ws');
@@ -62,7 +65,8 @@ class OpenAIRealtimeSTT {
                 transcription: {
                   model: this.model,
                   language: 'en'
-                }
+                },
+                turn_detection: { type: 'server_vad', silence_duration_ms: 500, prefix_padding_ms: 300 }
               }
             }
           }
@@ -82,7 +86,7 @@ class OpenAIRealtimeSTT {
         this.connected = false;
         this._sessionReady = false;
         this.onStatusChange('disconnected');
-        if (code !== 1000 && !this.reconnecting) {
+        if (code !== 1000 && !this.reconnecting && !this._stopped) {
           this._attemptReconnect();
         }
       });
@@ -97,8 +101,8 @@ class OpenAIRealtimeSTT {
   }
 
   _handleEvent(event) {
+    if (this._stopped) return;
     switch (event.type) {
-      case 'session.created':
       case 'session.updated':
         this._sessionReady = true;
         this._flushPendingAudio();
@@ -136,6 +140,7 @@ class OpenAIRealtimeSTT {
   }
 
   sendAudio(pcmBuffer) {
+    if (this._stopped) return;
     if (!this.connected || !this._sessionReady) {
       // Buffer audio until session is ready (max 5 seconds worth)
       this._pendingAudio.push(pcmBuffer);
@@ -188,6 +193,7 @@ class OpenAIRealtimeSTT {
   }
 
   _attemptReconnect() {
+    if (this._stopped) return;
     if (this._reconnectAttempts >= this._maxReconnectAttempts) {
       this.onError({ provider: 'openai-realtime', message: 'Max reconnection attempts reached', status: null });
       return;
@@ -195,13 +201,17 @@ class OpenAIRealtimeSTT {
     this.reconnecting = true;
     this._reconnectAttempts++;
     const delay = this._reconnectDelay * Math.pow(2, this._reconnectAttempts - 1);
-    setTimeout(() => {
+    this._reconnectTimer = setTimeout(() => {
+      if (this._stopped) return;
       this.reconnecting = false;
       this.connect();
     }, Math.min(delay, 16000));
   }
 
   disconnect() {
+    this._stopped = true;
+    clearTimeout(this._reconnectTimer);
+    this.reconnecting = false;
     this._sessionReady = false;
     this._pendingAudio = [];
     if (this.ws) {
@@ -378,8 +388,8 @@ async function transcribeBatchOpenAI(apiKey, wav, model) {
   const file = await toFile(wav, 'audio.wav', { type: 'audio/wav' });
   const res = await client.audio.transcriptions.create({
     file,
-    model: model || 'whisper-1',
-    response_format: 'text',
+    model: model || 'gpt-4o-mini-transcribe',
+    response_format: 'json',
     language: 'en'
   });
   return (typeof res === 'string' ? res : res.text || '').trim();
@@ -428,7 +438,7 @@ function createStreamingSTT(settings, channel, callbacks) {
   // Priority 2: OpenAI Realtime API (excellent quality, slightly higher latency)
   if ((selectedProvider === 'auto' || selectedProvider === 'openai') && keys.openai) {
     const stt = new OpenAIRealtimeSTT(keys.openai, {
-      model: 'gpt-realtime-whisper', // only this model gives true streaming deltas
+      model: settings.sttModel || 'gpt-4o-mini-transcribe',
       onTranscript: (text) => onTranscript(channel, text),
       onInterim: (text) => onInterim(channel, text),
       onError,

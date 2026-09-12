@@ -115,6 +115,7 @@
       border: 1px solid rgba(255,255,255,0.06);
     }
     .perm-note strong { color: var(--tx-2); font-weight: 600; }
+    #restart-btn { margin-top: 10px; }
 
     /* Actions */
     .perm-actions {
@@ -212,9 +213,9 @@
         <span class="perm-badge" id="badge-screen"></span>
       </div>
 
-      <div class="perm-note">
-        <strong>Tip:</strong> After toggling a permission in System Settings, click <strong>Check Again</strong> below.
-        If Screen Recording was just enabled, you may need to restart cue for it to take effect.
+      <div class="perm-note no-drag">
+        <strong>Already enabled in System Settings?</strong> macOS may keep the previous screen-access status until cue fully restarts. Use <strong>Restart Cue</strong>, then check again. You do not need to change an enabled switch.
+        <br><button class="perm-open-btn" id="restart-btn">Restart Cue</button>
       </div>
 
       <div class="perm-actions no-drag">
@@ -241,6 +242,7 @@
       const checkBtn = document.getElementById('check-btn');
       const continueBtn = document.getElementById('continue-btn');
       const quitBtn = document.getElementById('quit-btn');
+      const restartBtn = document.getElementById('restart-btn');
 
       function updateUI(status) {
         const micOk = status.mic === 'granted';
@@ -256,7 +258,7 @@
 
         // Screen
         rowScreen.className = 'perm-row no-drag ' + (screenOk ? 'granted' : 'denied');
-        statusScreen.textContent = screenOk ? 'Granted' : (status.screen === 'not-determined' ? 'Not yet requested' : 'Not granted — open Settings to allow');
+        statusScreen.textContent = screenOk ? 'Granted' : (status.screen === 'not-determined' ? 'Not yet requested' : 'Not available to Cue yet');
         statusScreen.className = 'perm-status ' + (screenOk ? 'ok' : 'bad');
         badgeScreen.textContent = screenOk ? '✓' : '✗';
         badgeScreen.className = 'perm-badge ' + (screenOk ? 'ok' : 'bad');
@@ -267,6 +269,8 @@
       }
 
       async function checkPermissions() {
+        if (checkBtn.disabled) return;
+        checkBtn.disabled = true;
         checkBtn.classList.add('checking');
         checkBtn.textContent = 'Checking…';
         try {
@@ -275,6 +279,7 @@
         } catch (e) {
           cue.log('permissions check error: ' + e);
         } finally {
+          checkBtn.disabled = false;
           checkBtn.classList.remove('checking');
           checkBtn.textContent = 'Check Again';
         }
@@ -298,6 +303,13 @@
 
       // Quit
       quitBtn.addEventListener('click', () => cue.quit());
+      restartBtn.addEventListener('click', () => {
+        restartBtn.disabled = true;
+        restartBtn.textContent = 'Restarting…';
+        cue.permissionsRestart();
+      });
+
+      window.addEventListener('focus', checkPermissions);
 
       // Initial check on page load
       checkPermissions();

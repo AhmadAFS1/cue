@@ -23,8 +23,8 @@ cue floats a small glass panel on top of everything. It takes **three separate i
 
 | Feature | How to trigger | What it uses |
 |---|---|---|
-| **Screenshot** | `⌘` `↵` (macOS) or `Ctrl` `Enter` (Windows), configurable | your screen + entire conversation |
-| **What should I say?** | button | meeting audio + your mic |
+| **Screenshot** | `⌘` `Shift` `↵` (macOS) or `Ctrl` `Shift` `Enter` (Windows) | your screen + entire conversation |
+| **What should I say?** | `⌘` `↵` (macOS) or `Ctrl` `Enter` (Windows) | meeting audio + your mic |
 | **Follow-up questions** | button | the whole conversation |
 | **Recap** | button | the whole conversation |
 | **Ask anything** | type + `↵` | your screen + conversation |
@@ -79,7 +79,9 @@ npm run pack:win    # unpacked Windows app -> dist/win-unpacked/cue.exe
 npm run dist:mac    # macOS zip            -> dist/
 npm run dist:win    # Windows installer    -> dist/cue-win-x64.exe
 ```
-> **macOS note:** the packaged app is **ad-hoc signed** unless a Developer ID certificate is configured. macOS ties permission grants to the exact build, so **rebuilding resets the mic/screen permissions** — you'll grant them again. For everyday use, build once and keep it. Windows has no equivalent problem.
+For a local macOS installation that preserves permission identity across updates, prepare the Whisper runtime below, then run `npm run install:mac`. This requires a valid Apple Development or Developer ID Application certificate in your keychain. The installer remembers the selected certificate, verifies that subsequent builds satisfy the same signing requirement, installs `/Applications/cue.app`, and relaunches it. If multiple certificates are available on the first run, set `CUE_SIGN_IDENTITY` to the desired fingerprint from `security find-identity -v -p codesigning`.
+
+Switching from an ad hoc build to certificate signing requires one permission refresh. Future installs through this command retain the signing identity; macOS can still revoke or re-confirm access. Plain unsigned/ad hoc builds have no such continuity. Private signing keys remain in Keychain; the installer saves only certificate metadata in `~/Library/Application Support/cue/local-signing.json`.
 To build a packaged app:
 ```bash
 npm run dist:mac    # macOS build
@@ -161,9 +163,27 @@ cue is hidden from most screen-share tools automatically — **Google Meet, Micr
 
 ## How to use it
 
+### Move, resize, and expand the overlay
+
+The **Expand** button in the top bar enlarges the panel; **Restore** returns to its previous size and position. You can also drag the grip at the bottom-right of the panel to resize it. The response area grows with the window, and position and size survive an app restart.
+
+These shortcuts work while another application has focus:
+
+| Action | macOS | Windows / Linux |
+|---|---|---|
+| Move in 40-pixel steps | `⌘⌥` + arrow keys | `Ctrl+Alt` + arrow keys |
+| Adjust width / height | `⌘⌥⇧` + arrow keys | `Ctrl+Alt+Shift` + arrow keys |
+| Expand / restore | `⌘⌥Return` | `Ctrl+Alt+Enter` |
+| Center on the current screen | `⌘⌥C` | `Ctrl+Alt+C` |
+
+For resizing, Left narrows, Right widens, Up shortens, and Down makes the panel taller. Window controls keep the overlay inside the current display's usable area. Drag it to another display to move between monitors.
+
+**Settings → Window** lists each shortcut and shows whether registration succeeded. A shortcut reserved by macOS or another application may be unavailable; change the conflicting binding and restart Cue. These are ordinary OS-registered global shortcuts, not an undetectability feature: modifier events and system-level monitoring can still reveal key activity. Browser behavior must be tested on the actual system.
+
 > On Windows, press **`Ctrl`** wherever **`⌘`** appears below. cue's own UI relabels the keys to match your OS.
 
-- **`⌘` `↵` — Screenshot.** The do-the-smart-thing key. It uses your screen and the entire conversation; on a coding problem it solves it, and in a conversation it tells you what to say. Works from anywhere. Change it under **Settings → Keyboard shortcuts**.
+- **`⌘` `↵` — What should I say?** Suggests what to say next from the conversation.
+- **`⌘` `⇧` `↵` — Screenshot.** The do-the-smart-thing key. It uses your screen and the entire conversation; on a coding problem it solves it, and in a conversation it tells you what to say. Works from anywhere.
 - **`⌘` `H` — Solve what's on screen.** Screenshots a coding problem and returns the approach, code, and time/space complexity.
 - **The `▢` button** (top bar) — start/stop **listening** to a meeting. The green dot means it's live.
 - **Type a question** in the box and press `↵` to ask about your screen or conversation.
@@ -206,7 +226,6 @@ renderer ──────┴─ the glass UI + mic capture + system-audio loop
 
 ## Troubleshooting
 
-**"It says give access, but I already gave access." (macOS)**
 **Local transcription says the runtime is not prepared.**
 Packaged releases include the runtime. If you are running from source, run `npm run prepare:whisper` once and restart Cue. On macOS, install CMake and Xcode command-line tools first.
 
@@ -217,7 +236,7 @@ Open **Settings → Audio**, select the model, and choose **Download**. A cancel
 Try `base.en`, `tiny.en`, or a quantized `q5`/`q8` model. Model size in Settings is the download size, not a guarantee of runtime RAM use; larger models require substantially more memory and CPU/GPU time.
 
 **"It says give access, but I already gave access."**
-You probably granted an older build. Because the app is ad-hoc signed, a rebuild changes its identity and macOS stops honoring the old grant (the checkmark can linger). Toggle cue **off and on** in System Settings → Screen Recording, or remove and re-add it.
+If the switch is already enabled, use **Restart Cue** on the permission screen to fully relaunch the process. An ad hoc rebuild can also leave the switch attached to an older code signature. Refresh Cue's entry once for the new build and accept any macOS confirmation. Use `npm run install:mac` for subsequent local updates so the signing identity stays stable. macOS remains in control of consent; this does not make access irrevocable.
 
 **"What should I say?", "Follow-up questions", or "Recap" never hear the other person (macOS).**
 Expected — meeting audio is Windows-only (see [Platform support](#platform-support)). Your own mic still transcribes, so those features see the *You* side of the conversation but never the *Them* side.
@@ -266,3 +285,11 @@ Built as an open-source study of how tools like **Cluely** and **Interview Coder
 Local transcription uses [whisper.cpp](https://github.com/ggml-org/whisper.cpp), distributed under the MIT License. Its license notice is included in packaged runtimes.
 
 **License: [GPL-3.0-or-later](LICENSE).**
+
+### Resumes and transcription
+
+Choose a resume in the overlay's **Resume** dropdown. Settings → Profile imports multiple PDF, DOCX, Markdown, or text resumes and supporting references. Cue includes the full selected resume and all supporting references in personal-assistance prompts; it does not combine unselected resume variants. Personal documents stay in your local application settings.
+
+Use **Transcribe** to start audio transcription and **Pause** to stop. OpenAI transcription defaults to `gpt-4o-mini-transcribe`; replies use GPT Sol in Fast mode by default. Both require your OpenAI API key. Smart mode enables additional reasoning.
+
+For a source-only local update when disk space is limited, `npm run install:mac -- --resources-only` reuses the verified installed runtime and refuses changes to production dependencies. Use the full installer for dependency updates.

@@ -12,6 +12,7 @@
     "prepare:whisper": "node scripts/prepare-whisper-runtime.js",
     "verify:whisper-runtime": "node scripts/verify-whisper-runtime.js",
     "pack": "electron-builder --dir",
+    "install:mac": "node scripts/install-local-mac.js",
     "dist": "electron-builder --mac zip",
     "dist:mac": "electron-builder --mac zip",
     "dist:win": "electron-builder --win",

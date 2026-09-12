@@ -6,6 +6,7 @@ const path = require('path');
 async function parseDocumentFile(filePath) {
   const ext = path.extname(filePath).toLowerCase();
   const buf = fs.readFileSync(filePath);
+  if (ext === '.md' || ext === '.txt') return buf.toString('utf8');
   if (ext === '.pdf') {
     const pdfParse = require('pdf-parse');
     const res = await pdfParse(buf);

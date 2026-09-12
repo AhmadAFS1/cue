@@ -17,6 +17,7 @@
       <button class="tb-logo" id="logo-btn" title="cue"></button>
       <div class="tb-divider"></div>
       <button class="tb-hide" id="hide-btn"><span class="chev"></span><span>Hide</span></button>
+      <button class="tb-hide" id="expand-btn" title="Expand window"><span class="expand-icon"></span><span class="expand-label">Expand</span></button>
       <div class="tb-divider"></div>
       <button class="tb-stop" id="stop-btn" title="Start / stop listening"></button>
       <div class="tb-divider"></div>
@@ -34,6 +35,7 @@
 
           <!-- Left column: AI responses -->
           <div id="panel-main">
+            <div class="context-row"><label for="resume-select">Resume</label><select id="resume-select"></select><span id="reference-count"></span></div>
             <div id="messages"></div>
 
             <div id="action-row">
@@ -56,7 +58,7 @@
 
             <div id="composer">
               <div id="input-area">
-                <div id="placeholder">Ask about your screen or conversation, or <span class="keycap">⌘</span><span class="keycap">⏎</span> for Screenshot</div>
+                <div id="placeholder">Ask about your screen or conversation, or <span class="keycap">⌘</span><span class="keycap">⇧</span><span class="keycap">⏎</span> for Screenshot</div>
                 <textarea id="input" rows="1" spellcheck="false"></textarea>
               </div>
               <div id="composer-bottom">
@@ -78,6 +80,7 @@
 
         </div><!-- /panel-columns -->
       </div>
+      <button id="resize-grip" title="Drag to resize; arrow keys adjust size" aria-label="Resize window"></button>
     </div>
 
     <!-- Transcript history sidebar — floats OUTSIDE main panel, toggled by history button -->
@@ -107,6 +110,7 @@
       <div class="s-tabs">
         <button class="s-tab on" data-tab="keys">🔑 Keys</button>
         <button class="s-tab" data-tab="transcription">Audio</button>
+        <button class="s-tab" data-tab="window">Window</button>
         <button class="s-tab" data-tab="profile">📄 Profile</button>
         <button class="s-tab" data-tab="prep">🎯 Interview Prep</button>
         <button class="s-tab" data-tab="style">✨ Style</button>
@@ -215,11 +219,28 @@
       </div>
 
       <!-- Tab: Profile -->
+      <div class="s-body s-tab-pane hidden" data-pane="window">
+        <label class="s-label">Window controls</label>
+        <div class="s-note">Move and resize Cue while another app stays focused. Your position and size are saved automatically.</div>
+        <div class="window-actions">
+          <button class="s-action" data-window-action="expand">Expand / restore</button>
+          <button class="s-action" data-window-action="center">Center on screen</button>
+        </div>
+        <div id="window-size" class="s-note" aria-live="polite"></div>
+        <label class="s-label">Keyboard shortcuts</label>
+        <div id="window-shortcuts"></div>
+        <div id="window-shortcut-status" class="s-note" role="status"></div>
+        <div class="s-note">These shortcuts are global while Cue is running. Modifier keys can still appear in keyboard viewers. They are not hidden from macOS or system-level monitoring.</div>
+      </div>
+
+      <!-- Tab: Profile -->
       <div class="s-body s-tab-pane hidden" data-pane="profile">
         <label class="s-label">Your resume <span class="s-hint">paste full resume, or import a PDF/DOCX</span></label>
         <div class="s-field s-upload"><span class="s-filename" id="resume-filename"></span><button class="s-upload-btn" id="upload-resume-btn">Import PDF/DOCX</button></div>
+        <input id="resume-name" placeholder="Resume name" aria-label="Resume name">
         <textarea id="resume-text" rows="7" spellcheck="false" placeholder="Paste your full resume here. cue will extract Name, Summary, Experience, Skills, Projects, and Education automatically."></textarea>
 
+        <label class="s-label">Supporting references</label><div id="reference-list" class="s-note"></div><button class="s-upload-btn" id="import-reference-btn">Add reference documents</button>
         <label class="s-label">Target job description <span class="s-hint">optional — every answer gets tailored to this role</span></label>
         <div class="s-field s-upload"><span class="s-filename" id="jd-filename"></span><button class="s-upload-btn" id="upload-jd-btn">Import PDF/DOCX</button></div>
         <textarea id="job-description" rows="5" spellcheck="false" placeholder="Paste the job description for the role you're interviewing for. cue will highlight your most relevant experience."></textarea>

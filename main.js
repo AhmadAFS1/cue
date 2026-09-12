@@ -5,6 +5,7 @@ const store = require('./src/store');
 const { captureScreenshot } = require('./src/screen');
 const { createSTT } = require('./src/stt');
 const { parseDocumentFile } = require('./src/resume');
+const { upsertResume, selectResume } = require('./src/resume-library');
 const { createLLM } = require('./src/llm');
 const { MODES } = require('./src/prompts');
 const { rms16 } = require('./src/wav');
@@ -13,6 +14,9 @@ const { AdaptiveVAD, AudioRingBuffer } = require('./src/vad');
 const { buildInterviewContext, detectCategory } = require('./src/interview-context');
 const { startAppLink, stopAppLink, recordEvent, appLinkConsentState, revokeAppLinkCaller } = require('./src/applink');
 const { buildDisplayMediaGrant, displayMediaHandlerOptions } = require('./src/display-media');
+const { WindowControls, initialBounds, MIN_WIDTH, MIN_HEIGHT } = require('./src/window-controls');
+const { WINDOW_SHORTCUTS, registerWindowShortcuts } = require('./src/window-shortcuts');
+const { DEFAULTS: FEATURE_SHORTCUTS } = require('./src/shortcuts');
 
 // macOS system-audio loopback (the "them" channel via getDisplayMedia) does not
 // start on Electron 31–38 unless these Chromium features are enabled; without
@@ -28,6 +32,7 @@ const { locateWhisperRuntime } = require('./src/whisper-runtime');
 const { LocalWhisperTranscriber } = require('./src/local-whisper-transcriber');
 
 let win = null;
+let windowControls = null;
 // Which global shortcuts cue actually holds. `globalShortcut.register` returns
 // false when another application already owns the combination, and nothing used
 // to look at that — so the only symptom was a key that did nothing. Iris reads
@@ -48,6 +53,7 @@ const WIN_BUILD = getWindowsBuild();
 const WIN_SUPPORTS_CONTENT_PROTECTION = !isWindows || WIN_BUILD >= 19041;
 
 let permWin = null;
+let startupComplete = false;
 
 // -------- capture / transcript state --------
 const state = { capturing: false, busy: false, transcribing: { you: false, them: false } };
@@ -182,25 +188,16 @@ async function getWhisperOverview() {
 
 // -------- window --------
 function createWindow() {
-  const { workArea } = screen.getPrimaryDisplay();
-  const W = 700, H = 600;
-
   const savedSettings = store.getSettings();
-  let startX = Math.round(workArea.x + (workArea.width - W) / 2);
-  let startY = workArea.y + 6;
-
-  if (savedSettings.windowX !== null && savedSettings.windowY !== null) {
-    const clampedX = Math.max(workArea.x - W + 100, Math.min(savedSettings.windowX, workArea.x + workArea.width - 100));
-    const clampedY = Math.max(workArea.y, Math.min(savedSettings.windowY, workArea.y + workArea.height - 40));
-    startX = clampedX;
-    startY = clampedY;
-  }
+  const display = Number.isFinite(savedSettings.windowX) && Number.isFinite(savedSettings.windowY)
+    ? screen.getDisplayNearestPoint({ x: savedSettings.windowX, y: savedSettings.windowY })
+    : screen.getPrimaryDisplay();
+  const bounds = initialBounds(savedSettings, display.workArea);
 
   const winOptions = {
-    width: W,
-    height: H,
-    x: startX,
-    y: startY,
+    ...bounds,
+    minWidth: Math.min(MIN_WIDTH, display.workArea.width),
+    minHeight: Math.min(MIN_HEIGHT, display.workArea.height),
     frame: false,
     transparent: true,
     hasShadow: false,
@@ -224,6 +221,13 @@ function createWindow() {
   }
 
   win = new BrowserWindow(winOptions);
+  windowControls = new WindowControls({
+    getWindow: () => win,
+    getWorkArea: (rect) => screen.getDisplayMatching(rect).workArea,
+    save: (patch) => store.setSettings(patch),
+    onChange: (state) => send('window:state', state),
+    settings: savedSettings,
+  });
 
   // Fix 2: Only call setContentProtection if the OS supports it.
   // On Windows, WDA_EXCLUDEFROMCAPTURE requires build 19041+ (Windows 10 May 2020 Update).
@@ -249,17 +253,22 @@ function createWindow() {
     clearTimeout(moveSaveTimer);
     moveSaveTimer = setTimeout(() => {
       if (win && !win.isDestroyed()) {
-        const [x, y] = win.getPosition();
-        store.setSettings({ windowX: x, windowY: y });
+        windowControls.persist();
       }
     }, 500);
   });
+  win.on('resized', () => {
+    windowControls.restoreBounds = null;
+    windowControls.persist();
+  });
+  win.on('closed', () => clearTimeout(moveSaveTimer));
 
   win.setTitle('Microsoft Edge Update'); // set before load
 
   win.webContents.on('did-finish-load', () => {
     win.showInactive();
     win.setTitle('Microsoft Edge Update');
+    send('window:state', windowControls.getState());
     // Warn about missing content protection on old Windows builds
     if (isWindows && shouldProtect && !WIN_SUPPORTS_CONTENT_PROTECTION) {
       send('status', {
@@ -566,6 +575,14 @@ async function runFeature(mode, userText) {
 // -------- IPC --------
 ipcMain.handle('settings:get', () => store.getSettings());
 ipcMain.handle('settings:set', (_e, patch) => { sttDisabled = false; return store.setSettings(patch); });
+ipcMain.handle('window:state', () => windowControls?.getState());
+ipcMain.handle('window:command', (_e, action) => runWindowCommand(action));
+ipcMain.on('window:resize-start', (_e, point) => windowControls?.beginResize(point));
+ipcMain.on('window:resize-move', (_e, point) => windowControls?.resizeTo(point));
+ipcMain.on('window:resize-end', () => windowControls?.endResize());
+ipcMain.handle('window:shortcuts', () => Object.entries(WINDOW_SHORTCUTS).map(([action, definition]) => ({
+  action, ...definition, registered: !!shortcutState[action],
+})));
 ipcMain.handle('capture:toggle', () => {
   const targetState = !desiredCaptureState;
   desiredCaptureState = targetState;
@@ -630,6 +647,25 @@ ipcMain.on('mouse:ignore', (_e, v) => { if (win) win.setIgnoreMouseEvents(!!v, {
 ipcMain.on('open-pane', (_e, url) => { shell.openExternal(url).catch(() => {}); });
 ipcMain.on('app:quit', () => app.quit());
 ipcMain.on('log', (_e, msg) => console.log('[renderer]', msg));
+ipcMain.handle('resumes:select', (_e, id) => store.setSettings(selectResume(store.getSettings(), id)));
+ipcMain.handle('resumes:import', async (_e, supporting = false) => {
+  try {
+    const result = await dialog.showOpenDialog(win, {
+      properties: ['openFile', 'multiSelections'],
+      filters: [{ name: 'Documents', extensions: ['pdf', 'docx', 'md', 'txt'] }]
+    });
+    if (result.canceled) return { canceled: true };
+    let next = store.getSettings();
+    for (const file of result.filePaths) {
+      const text = await parseDocumentFile(file);
+      if (!text.trim()) throw new Error(path.basename(file) + ' has no readable text.');
+      const entry = { id: require('crypto').randomUUID(), name: path.basename(file, path.extname(file)), fileName: path.basename(file), text };
+      next = supporting ? { ...next, supportingDocuments: [...(next.supportingDocuments || []), entry] } : upsertResume(next, entry);
+    }
+    return { settings: store.setSettings(next) };
+  } catch (error) { return { error: error.message }; }
+});
+
 // -------- resume / job-description file import --------
 // The dialog runs in MAIN and is filtered to pdf/docx; the renderer never supplies a path.
 // The parsed text is RETURNED to the renderer, which drops it into the existing
@@ -660,21 +696,35 @@ ipcMain.handle('applink:revoke', (_e, callerId) => revokeAppLinkCaller(callerId)
 // -------- permissions IPC --------
 ipcMain.handle('permissions:check', () => getPermissionStatus());
 ipcMain.handle('permissions:request', () => requestPermissions());
+ipcMain.on('permissions:restart', () => {
+  if (!permWin || permWin.isDestroyed()) return;
+  app.relaunch();
+  app.quit();
+});
 ipcMain.on('permissions:continue', async () => {
   const status = await getPermissionStatus();
   if (status.mic === 'granted' && status.screen === 'granted') {
-    if (permWin) { permWin.close(); permWin = null; }
+    // Create the main window first so closing the gate cannot trigger quit.
     launchApp();
+    if (permWin) permWin.close();
   }
 });
 
 // -------- shortcuts --------
+function runWindowCommand(action) {
+  if (!win || win.isDestroyed() || !windowControls) return null;
+  const result = windowControls.command(action);
+  if (['expand', 'wider', 'narrower', 'taller', 'shorter'].includes(action)) send('panel:show', {});
+  return result;
+}
+
 function registerShortcuts() {
-  shortcutState.assist = globalShortcut.register('CommandOrControl+Return', () => runFeature('assist', ''));
-  shortcutState.say = globalShortcut.register('CommandOrControl+Shift+Return', () => runFeature('say', ''));
+  shortcutState.assist = globalShortcut.register(FEATURE_SHORTCUTS.assist, () => runFeature('assist', ''));
+  shortcutState.say = globalShortcut.register(FEATURE_SHORTCUTS.say, () => runFeature('say', ''));
   shortcutState.leetcode = globalShortcut.register('CommandOrControl+H', () => runFeature('leetcode', ''));
   shortcutState.hide = globalShortcut.register('CommandOrControl+Shift+/', () => send('hide:toggle', {}));
   shortcutState.quit = globalShortcut.register('CommandOrControl+Shift+X', () => app.quit());
+  Object.assign(shortcutState, registerWindowShortcuts(globalShortcut, runWindowCommand));
   for (const [name, wasRegistered] of Object.entries(shortcutState)) {
     if (!wasRegistered) {
       recordEvent({ level: 'warn', event: 'shortcut_unavailable', msg: 'another application holds the ' + name + ' shortcut', frame: 'registerShortcuts', context: { shortcut: name } });
@@ -739,7 +789,7 @@ async function requestPermissions() {
 
 function createPermissionsWindow() {
   const { workArea } = screen.getPrimaryDisplay();
-  const W = 500, H = 540;
+  const W = 500, H = 570;
   permWin = new BrowserWindow({
     width: W,
     height: H,
@@ -758,12 +808,15 @@ function createPermissionsWindow() {
       sandbox: false,
     }
   });
-  permWin.loadFile(path.join(__dirname, 'renderer', 'permissions.html'));
-  permWin.webContents.on('did-finish-load', () => permWin.show());
+  const permissionWindow = permWin;
+  permissionWindow.on('closed', () => { if (permWin === permissionWindow) permWin = null; });
+  permissionWindow.loadFile(path.join(__dirname, 'renderer', 'permissions.html'));
+  permissionWindow.webContents.on('did-finish-load', () => permissionWindow.show());
 }
 
 // -------- launch (called after permissions are confirmed) --------
 function launchApp() {
+  if (win && !win.isDestroyed()) return;
   if (isMac && app.dock) app.dock.hide();
 
   whisperModelManager = new WhisperModelManager({ userDataPath: app.getPath('userData') });
@@ -813,15 +866,22 @@ app.whenReady().then(async () => {
   if (isMac) {
     const allGranted = await requestPermissions();
     if (!allGranted) {
+      startupComplete = true;
       // Show the permissions gate — the dock stays visible so the user can find the app
       createPermissionsWindow();
-      app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createPermissionsWindow(); });
       return;
     }
   }
 
   launchApp();
-  app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
+  startupComplete = true;
+});
+
+app.on('activate', () => {
+  if (!startupComplete) return;
+  if (BrowserWindow.getAllWindows().length !== 0) return;
+  if (whisperModelManager) createWindow();
+  else createPermissionsWindow();
 });
 
 app.on('will-quit', () => {
@@ -837,10 +897,3 @@ app.on('will-quit', () => {
   if (localWhisperTranscriber) localWhisperTranscriber.forceStop().catch(() => {});
 });
 app.on('window-all-closed', () => app.quit());
-
-app.on('will-quit', () => { globalShortcut.unregisterAll(); });
-app.on('window-all-closed', (e) => {
-  // Don't quit while the permissions window is open — the user may be in System Settings
-  if (permWin) { e.preventDefault(); return; }
-  app.quit();
-});

@@ -37,7 +37,7 @@ async function transcribeOpenAI(apiKey, wav, model, baseURL, prompt) {
   const file = await toFile(wav, 'audio.wav', { type: 'audio/wav' });
   const res = await client.audio.transcriptions.create({
     file,
-    model: model || 'whisper-1',
+    model: model || 'gpt-4o-mini-transcribe',
     language: 'en',
     temperature: 0,
     prompt: prompt || ''

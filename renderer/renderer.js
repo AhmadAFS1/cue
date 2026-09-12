@@ -9,7 +9,15 @@
   // ---- paint icons -------------------------------------------------------
   $('#logo-btn').innerHTML = icon('logo', { size: 18 });
   $('.tb-hide .chev').innerHTML = icon('chevron-down', { size: 14 });
-  $('#stop-btn').innerHTML = icon('stop-square', { size: 15 });
+  function renderCaptureButton(active) {
+    const btn = $('#stop-btn');
+    btn.classList.toggle('active', !!active);
+    btn.innerHTML = (active ? '<span aria-hidden="true">Ⅱ</span>' : icon('play', { size: 15 })) + '<span>' + (active ? 'Pause' : 'Transcribe') + '</span>';
+    btn.title = active ? 'Pause transcription' : 'Start transcription';
+    btn.setAttribute('aria-label', btn.title);
+    btn.setAttribute('aria-pressed', String(!!active));
+  }
+  renderCaptureButton(false);
   $('#quit-btn').innerHTML = icon('x', { size: 14 });
   document.querySelector('.act[data-mode="assist"] .ic').innerHTML = icon('sparkles', { size: 16 });
   document.querySelector('.act[data-mode="say"] .ic').innerHTML = icon('wand-sparkles', { size: 16 });
@@ -516,7 +524,10 @@
       return;
     }
     if (e.key === 'Enter' && !e.shiftKey && !e.metaKey && !e.ctrlKey) { e.preventDefault(); send(); }
-    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); runMode('assist', ''); }
+    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && !e.altKey) {
+      e.preventDefault();
+      runMode(e.shiftKey ? 'assist' : 'say', '');
+    }
   });
   
   // FIX #13: Global keyboard shortcut for force-answer (Ctrl+Shift+A / Cmd+Shift+A)
@@ -551,13 +562,84 @@
   });
 
   // Hide / collapse
-  function toggleHide() {
-    const collapsed = $('#panel').classList.toggle('collapsed');
+  function setCollapsed(collapsed) {
+    $('#panel').classList.toggle('collapsed', collapsed);
+    $('#panel-wrap').classList.toggle('hidden', collapsed);
     $('#hide-btn').classList.toggle('collapsed', collapsed);
+    $('#hide-btn').lastElementChild.textContent = collapsed ? 'Show' : 'Hide';
     $('#live-dot').style.display = collapsed ? 'none' : '';
+    if (collapsed) hideSidebar();
   }
+  function toggleHide() { setCollapsed(!$('#panel').classList.contains('collapsed')); }
   $('#hide-btn').addEventListener('click', toggleHide);
   cue.on('hide:toggle', toggleHide);
+  cue.on('panel:show', () => setCollapsed(false));
+
+  const shortcutLabel = (accelerator) => accelerator
+    .replace('CommandOrControl', isMac ? '⌘' : 'Ctrl')
+    .replace('Alt', isMac ? '⌥' : 'Alt').replace('Shift', isMac ? '⇧' : 'Shift')
+    .replace('Return', 'Enter').replace('Left', '←').replace('Right', '→')
+    .replace('Up', '↑').replace('Down', '↓').replaceAll('+', isMac ? ' ' : ' + ');
+
+  function showWindowState(state) {
+    if (!state) return;
+    const label = state.expanded ? 'Restore' : 'Expand';
+    $('#expand-btn .expand-label').textContent = label;
+    $('#expand-btn .expand-icon').innerHTML = icon(state.expanded ? 'restore' : 'expand', { size: 14 });
+    $('#expand-btn').title = label + ' window · ' + shortcutLabel('CommandOrControl+Alt+Return');
+    $('#expand-btn').setAttribute('aria-pressed', String(state.expanded));
+    $('#window-size').textContent = `${state.bounds.width} × ${state.bounds.height}`;
+  }
+  const commandWindow = (action) => cue.windowCommand(action).then(showWindowState).catch(error => showStatus(error.message));
+  $('#expand-btn').addEventListener('click', () => commandWindow('expand'));
+  document.querySelectorAll('[data-window-action]').forEach(button => {
+    button.addEventListener('click', () => commandWindow(button.dataset.windowAction));
+  });
+  cue.on('window:state', showWindowState);
+
+  async function refreshWindowShortcuts() {
+    const shortcuts = await cue.windowShortcuts();
+    const host = $('#window-shortcuts');
+    host.replaceChildren();
+    for (const shortcut of shortcuts) {
+      const row = document.createElement('div');
+      row.className = 'window-shortcut-row' + (shortcut.registered ? '' : ' unavailable');
+      const label = document.createElement('span');
+      label.textContent = shortcut.label + (shortcut.registered ? '' : ' · unavailable');
+      const keys = document.createElement('kbd');
+      keys.textContent = shortcutLabel(shortcut.accelerator);
+      row.append(label, keys);
+      host.append(row);
+    }
+    const missing = shortcuts.filter(shortcut => !shortcut.registered);
+    $('#window-shortcut-status').textContent = missing.length
+      ? 'An unavailable shortcut may be reserved by another app or macOS. Change that conflicting shortcut, then restart Cue.'
+      : 'All window shortcuts are active. Move and resize in 40-pixel steps.';
+  }
+
+  // A visible grip avoids relying on native resize borders, which transparent
+  // click-through windows do not reliably expose on macOS.
+  const resizeGrip = $('#resize-grip');
+  let resizePointer = null;
+  resizeGrip.addEventListener('pointerdown', (event) => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    resizePointer = event.pointerId;
+    setIgnore(false);
+    resizeGrip.setPointerCapture(event.pointerId);
+    cue.windowResizeStart({ x: event.screenX, y: event.screenY });
+  });
+  resizeGrip.addEventListener('pointermove', (event) => {
+    if (resizePointer === event.pointerId) cue.windowResizeMove({ x: event.screenX, y: event.screenY });
+  });
+  function finishResize() { resizePointer = null; cue.windowResizeEnd(); }
+  resizeGrip.addEventListener('pointerup', finishResize);
+  resizeGrip.addEventListener('pointercancel', finishResize);
+  resizeGrip.addEventListener('lostpointercapture', finishResize);
+  resizeGrip.addEventListener('keydown', (event) => {
+    const action = { ArrowLeft: 'narrower', ArrowRight: 'wider', ArrowUp: 'shorter', ArrowDown: 'taller' }[event.key];
+    if (action) { event.preventDefault(); commandWindow(action); }
+  });
 
   // Quit the desktop app from the toolbar. The preload bridge already routes
   // this to Electron's app.quit(); keep the handler beside the other toolbar
@@ -568,14 +650,20 @@
   // Stop = start/stop listening. Kick off system-audio capture straight from the click so
   // the user-gesture is fresh for getDisplayMedia (loopback capture needs it).
   $('#stop-btn').addEventListener('click', async () => {
-    const turningOn = !$('#stop-btn').classList.contains('active');
+    const btn = $('#stop-btn');
+    if (btn.disabled) return;
+    btn.disabled = true;
+    try {
+    const turningOn = !btn.classList.contains('active');
     if (turningOn) {
       // startSystemAudio may fail (user cancels, no permission) — that's OK,
       // mic will still work and capture will toggle regardless
-      try { await startSystemAudio(); } catch (_) { /* handled inside startSystemAudio */ }
+      startSystemAudio().catch(error => showStatus(error.message));
     }
     const active = await cue.captureToggle();
     if (turningOn && !active) stopSystemAudio();
+    renderCaptureButton(active);
+    } catch (error) { stopSystemAudio(); showStatus(error.message); } finally { btn.disabled = false; }
   });
 
   // Transcript toggle removed — sidebar now auto-opens with listening
@@ -700,13 +788,14 @@
   }
 
   // ---- capture: system/meeting audio (getDisplayMedia loopback, in cue's process) ----
-  let sysStream = null, sysCtx = null, sysWorklet = null, sysStarting = false;
+  let sysStream = null, sysCtx = null, sysWorklet = null, sysStarting = false, sysGeneration = 0;
   async function startSystemAudio() {
     // Called both from the stop-btn click (fresh user gesture for getDisplayMedia) and from the
     // capture:state handler. getDisplayMedia is async, so `if (sysStream) return` alone loses the
     // race and can open a second loopback stream that is then orphaned.
     if (sysStream || sysStarting) return;
     sysStarting = true;
+    const generation = sysGeneration;
     if (!navigator.mediaDevices || typeof navigator.mediaDevices.getDisplayMedia !== 'function') {
       cue.log('system audio unavailable: getDisplayMedia not supported');
       showStatus('Meeting audio capture is not available on this device build.');
@@ -716,6 +805,7 @@
     try {
       const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
 
+      if (generation !== sysGeneration) { stream.getTracks().forEach(t => t.stop()); return; }
       const tracks = stream.getAudioTracks();
       if (!tracks.length) {
         cue.log('system audio: no loopback track on this platform');
@@ -783,6 +873,7 @@
     }
   }
   function stopSystemAudio() {
+    sysGeneration++;
     if (sysWorklet) {
       if (sysWorklet._legacy) {
         sysWorklet.proc.disconnect(); sysWorklet.proc.onaudioprocess = null;
@@ -965,7 +1056,7 @@
   // ---- events from main --------------------------------------------------
   cue.on('capture:state', ({ active, streaming, mode }) => {
     setLiveDotState(active ? 'idle' : 'off');
-    $('#stop-btn').classList.toggle('active', active);
+    renderCaptureButton(active);
     // FIX #4: Add .listening class to composer when capture is active
     composer.classList.toggle('listening', active);
     // Update history button to show active state when listening
@@ -1076,8 +1167,8 @@
         label.textContent = localLabels[status] || status;
         label.className = 'stt-status stt-' + sttState;
       }
-      if (status === 'loading') $('#stop-btn').classList.add('active');
-      if (status === 'off' || status === 'error') $('#stop-btn').classList.remove('active');
+      if (status === 'loading') renderCaptureButton(true);
+      if (status === 'off' || status === 'error') renderCaptureButton(false);
       if (status === 'loading' || status === 'transcribing' || status === 'stopping') setLiveDotState('transcribing');
       if (status === 'ready') setLiveDotState('idle');
       if (status === 'off') setLiveDotState('off');
@@ -1224,7 +1315,10 @@
     const fast = m.fast || 'fast model';
     const smart = m.smart || 'smart model';
     const btn = document.getElementById('smart-toggle');
-    if (btn) btn.title = 'Fast: ' + fast + ' · Smart: ' + smart + ' (higher quality, ~2× slower)';
+    if (btn) {
+      btn.title = 'Fast: ' + fast + ' · Smart: ' + smart;
+      btn.lastElementChild.textContent = (settings.provider === 'openai' ? 'Sol · ' : '') + (settings.smart ? 'Smart' : 'Fast');
+    }
   }
 
   // ---- microphone permission banner --------------------------------------
@@ -1258,7 +1352,6 @@
 
   // ---- settings ----------------------------------------------------------
   const scrim = $('#settings-scrim');
-  function openSettings() { fillSettings(); scrim.classList.remove('hidden'); }
   async function closeSettings() {
     if (await saveSettings()) scrim.classList.add('hidden');
   }
@@ -1266,8 +1359,8 @@
     fillSettings();
     scrim.classList.remove('hidden');
     refreshWhisperModels();
+    refreshWindowShortcuts().catch(error => { $('#window-shortcut-status').textContent = error.message; });
   }
-  function closeSettings() { saveSettings(); scrim.classList.add('hidden'); }
   $('#more-btn').addEventListener('click', openSettings);
   $('#s-close').addEventListener('click', () => { void closeSettings(); });
   scrim.addEventListener('click', (e) => { if (e.target === scrim) void closeSettings(); });
@@ -1318,6 +1411,8 @@
     $('#whisper-threads').value = Number(localWhisper.threads) || 0;
     // Profile tab
     $('#resume-text').value = settings.resumeText || '';
+    $('#resume-name').value = (settings.resumes || []).find(r => r.id === settings.activeResumeId)?.name || '';
+    renderResumeLibrary();
     $('#job-description').value = settings.jobDescription || '';
     // Interview Prep tab
     $('#star-stories').value = settings.starStories || '';
@@ -1368,14 +1463,31 @@
     }
   }
 
-  const uploadResumeBtn = document.getElementById('upload-resume-btn');
-  if (uploadResumeBtn) uploadResumeBtn.addEventListener('click', async () => {
-    const res = await cue.pickProfileDocument();
-    if (!res || res.canceled) return;
-    if (res.error) { showStatus('Resume import failed: ' + res.error); return; }
-    $('#resume-text').value = res.text || '';
-    showStatus('Imported ' + res.fileName + ' — press Save to keep it.');
+  function renderResumeLibrary() {
+    const select = $('#resume-select');
+    select.replaceChildren(new Option('No resume', ''));
+    for (const resume of settings.resumes || []) select.add(new Option(resume.name, resume.id));
+    select.value = settings.activeResumeId || '';
+    const docs = settings.supportingDocuments || [];
+    $('#reference-count').textContent = docs.length ? '+' + docs.length + ' references' : '';
+    $('#reference-count').title = docs.map(d => d.name).join('\n');
+    $('#reference-list').textContent = docs.map(d => d.name).join(' · ') || 'No supporting references yet.';
+  }
+  $('#resume-select').addEventListener('change', async (event) => {
+    try {
+      settings = await cue.selectResume(event.target.value);
+      fillSettings(); updatePrepStatus();
+    } catch (error) { showStatus(error.message); renderResumeLibrary(); }
   });
+  async function importDocuments(supporting) {
+    const res = await cue.importResumes(supporting);
+    if (!res || res.canceled) return;
+    if (res.error) { showStatus(res.error); return; }
+    settings = res.settings; fillSettings(); updatePrepStatus();
+    showStatus('Documents imported with their full text.');
+  }
+  $('#upload-resume-btn').addEventListener('click', () => importDocuments(false));
+  $('#import-reference-btn').addEventListener('click', () => importDocuments(true));
   const uploadJdBtn = document.getElementById('upload-jd-btn');
   if (uploadJdBtn) uploadJdBtn.addEventListener('click', async () => {
     const res = await cue.pickProfileDocument();
@@ -1587,7 +1699,14 @@
     settings.localWhisper.language = $('#whisper-language').value || 'auto';
     settings.localWhisper.threads = Math.max(0, Math.min(64, Number.parseInt($('#whisper-threads').value, 10) || 0));
     // Profile
-    settings.resumeText = $('#resume-text').value.trim();
+    settings.resumeText = $('#resume-text').value;
+    if (settings.resumeText.trim()) {
+      const id = settings.activeResumeId || crypto.randomUUID();
+      settings.resumes = (settings.resumes || []).filter(r => r.id !== id).concat({ id, name: $('#resume-name').value.trim() || 'Resume', text: settings.resumeText });
+      settings.activeResumeId = id;
+    } else if (settings.activeResumeId) {
+      settings.resumes = (settings.resumes || []).map(r => r.id === settings.activeResumeId ? { ...r, text: '' } : r);
+    }
     settings.jobDescription = $('#job-description').value.trim();
     // Interview Prep
     settings.starStories = $('#star-stories').value.trim();
@@ -1600,7 +1719,11 @@
     settings.salaryTarget = $('#salary-target').value.trim();
     settings.questionsToAsk = $('#questions-to-ask').value.trim();
     try {
-      settings = await cue.settingsSet(settings);
+      // Bounds are maintained by the main process. A stale settings form must
+      // not undo a move/resize made while the form was open.
+      const patch = Object.fromEntries(Object.entries(settings).filter(([key]) => !key.startsWith('window')));
+      settings = await cue.settingsSet(patch);
+      renderResumeLibrary();
       $('#s-status').textContent = statusText();
       updatePrepStatus();
       updateSmartTooltip();
@@ -1633,6 +1756,7 @@
   let ignoring = null;
   function setIgnore(v) { if (v !== ignoring) { ignoring = v; cue.setIgnoreMouse(v); } }
   document.addEventListener('mousemove', (e) => {
+    if (resizePointer !== null) { setIgnore(false); return; }
     const el = document.elementFromPoint(e.clientX, e.clientY);
     const overUI = !!(el && el.closest && el.closest('#toolbar, #panel-wrap, #transcript-sidebar, #settings-scrim, #onboard-scrim, #consent-scrim'));
     setIgnore(!overUI);
@@ -1690,7 +1814,7 @@
         { label: 'Open Microphone settings', action: () => cue.openPane('x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone') },
         { label: 'Open Screen Recording settings', action: () => cue.openPane('x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture') }
       ];
-  const assistShortcut = isWindows ? '<span class="kbd">Ctrl</span> <span class="kbd">↵</span>' : '<span class="kbd">⌘</span> <span class="kbd">↵</span>';
+  const assistShortcut = isWindows ? '<span class="kbd">Ctrl</span> <span class="kbd">⇧</span> <span class="kbd">↵</span>' : '<span class="kbd">⌘</span> <span class="kbd">⇧</span> <span class="kbd">↵</span>';
   const solveShortcut = isWindows ? '<span class="kbd">Ctrl</span> <span class="kbd">H</span>' : '<span class="kbd">⌘</span> <span class="kbd">H</span>';
   const quitShortcut = isWindows ? '<span class="kbd">Ctrl</span><span class="kbd">⇧</span><span class="kbd">X</span>' : '<span class="kbd">⌘</span><span class="kbd">⇧</span><span class="kbd">X</span>';
   const OB_STEPS = [
@@ -1749,13 +1873,15 @@
   // ---- boot --------------------------------------------------------------
   (async function boot() {
     settings = await cue.settingsGet();
+    renderResumeLibrary();
+    showWindowState(await cue.windowState());
     const platformInfo = await cue.platformInfo();
 
     // R4: shortcut hints
     const sayHintEl = document.getElementById('say-shortcut-hint');
     const assistHintEl = document.getElementById('assist-shortcut-hint');
-    if (sayHintEl) sayHintEl.textContent = isWindows ? 'Ctrl+Shift+↵' : '⌘⇧↵';
-    if (assistHintEl) assistHintEl.textContent = isWindows ? 'Ctrl+↵' : '⌘↵';
+    if (sayHintEl) sayHintEl.textContent = isWindows ? 'Ctrl+↵' : '⌘↵';
+    if (assistHintEl) assistHintEl.textContent = isWindows ? 'Ctrl+Shift+↵' : '⌘⇧↵';
 
     // R5: prep status
     updatePrepStatus();
@@ -1780,12 +1906,12 @@
 
     // Fix placeholder shortcut hint to match platform
     if (isWindows) {
-      placeholder.innerHTML = 'Ask about your screen or conversation, or <span class="keycap">Ctrl</span><span class="keycap">⏎</span> for Screenshot';
+      placeholder.innerHTML = 'Ask about your screen or conversation, or <span class="keycap">Ctrl</span><span class="keycap">⇧</span><span class="keycap">⏎</span> for Screenshot';
     }
 
     const st = await cue.captureState();
     $('#live-dot').classList.toggle('off', !st.active);
-    $('#stop-btn').classList.toggle('active', st.active);
+    renderCaptureButton(st.active);
     if (!settings.onboarded) showOnboard();
   })();
 })();

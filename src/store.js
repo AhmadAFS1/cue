@@ -3,6 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const { app } = require('electron');
 const { normalizeBaseUrl } = require('./openai-compatible');
+const { normalizeResumeSettings } = require('./resume-library');
 
 const FILE = path.join(app.getPath('userData'), 'cue-data.json');
 
@@ -13,7 +14,8 @@ const CURRENT_OPENAI_DEFAULT = 'gpt-5.6-sol';
 
 const DEFAULTS = {
   provider: 'openai',
-  sttProvider: 'auto',
+  sttProvider: 'openai',
+  sttModel: 'gpt-4o-mini-transcribe',
   localWhisper: {
     modelId: 'base.en',
     language: 'auto',
@@ -26,6 +28,9 @@ const DEFAULTS = {
   azureEndpoint: '',
   // Tab 2: Profile
   resumeText: '',
+  resumes: [],
+  supportingDocuments: [],
+  activeResumeId: '',
   jobDescription: '',
   // Tab 3: Interview Prep
   starStories: '',       // 3-5 behavioral STAR stories in plain English
@@ -43,6 +48,10 @@ const DEFAULTS = {
   // Window position
   windowX: null,
   windowY: null,
+  windowWidth: 700,
+  windowHeight: 600,
+  windowExpanded: false,
+  windowRestoreBounds: null,
   models: {
     openai: { fast: CURRENT_OPENAI_DEFAULT, smart: CURRENT_OPENAI_DEFAULT },
     anthropic: { fast: 'claude-3-5-haiku-latest', smart: 'claude-3-5-sonnet-latest' },
@@ -92,7 +101,9 @@ function load() {
   try { data = deepMerge(DEFAULTS, JSON.parse(fs.readFileSync(FILE, 'utf8'))); }
   catch { data = deepMerge(DEFAULTS, {}); }
 
-  if (migrateLegacyOpenAIDefaults(data)) save();
+  const legacyResume = (!Array.isArray(data.resumes) || !data.resumes.length) && !!data.resumeText;
+  data = normalizeResumeSettings(data);
+  if (migrateLegacyOpenAIDefaults(data) || legacyResume) save();
 
   return data;
 }
@@ -105,7 +116,7 @@ module.exports = {
     load();
     const nextSettings = deepMerge(data, patch || {});
     nextSettings.baseUrl = normalizeBaseUrl(nextSettings.baseUrl);
-    data = nextSettings;
+    data = normalizeResumeSettings(nextSettings);
     save();
     return data;
   }

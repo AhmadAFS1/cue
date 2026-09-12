@@ -2,7 +2,8 @@
 // Accelerator strings follow Electron's format, e.g. 'CommandOrControl+Return'.
 
 const DEFAULTS = {
-  assist: 'CommandOrControl+Return',
+  assist: 'CommandOrControl+Shift+Return',
+  say: 'CommandOrControl+Return',
   leetcode: 'CommandOrControl+H',
   quit: 'CommandOrControl+Shift+X',
   hide: 'Shift+Q', // Windows-only convenience (no Cmd key)
