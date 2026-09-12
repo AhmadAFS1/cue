@@ -26,6 +26,14 @@ function applyRules(prompt, aiRules, mode) {
 const BASE_RULES =
   'Always respond in clear, natural English. Never switch to Hindi or any other language unless the user explicitly asks for it. ';
 
+// The answer modes share a predictable layout: the top is ready to speak in a
+// live conversation, while the lower section gives the user enough substance
+// to understand or adapt it without having to infer the reasoning.
+const SPOKEN_ANSWER_FORMAT =
+  'Use exactly this response layout:\n' +
+  '**Say this:** Write a natural, informal 2–3 sentence answer in first person that the candidate can read out loud verbatim. Avoid jargon unless the interviewer used it.\n\n' +
+  '**Details:** Follow with concise bullet points that explain the reasoning, relevant evidence, steps, or technical detail. Do not repeat the spoken answer verbatim. ';
+
 const MODES = {
 
   // ── Screenshot: one-shot "do the smart thing" ─────────────────────────────
@@ -48,7 +56,7 @@ const MODES = {
         '• TECHNICAL/CONCEPTUAL: Explain clearly with examples. For LeetCode: short approach + solution + complexity.\n' +
         '• COMPENSATION ("salary expectations"): Use their stated target, give a confident range.\n' +
         '• "Any questions for us?": Offer 2–3 of their prepared questions.\n\n' +
-        'Write in first person as if the candidate is speaking. No preamble, no "Here\'s what you could say". Just the answer.',
+        'Write in first person as if the candidate is speaking. ' + SPOKEN_ANSWER_FORMAT,
         contextBlock
       ), aiRules, 'assist');
     },
@@ -77,7 +85,7 @@ const MODES = {
         '• EXPERIENCE: Reference the specific role/project from their resume.\n' +
         '• COMPENSATION: State the target range confidently without over-explaining.\n' +
         '• TECHNICAL: Give a clear, confident explanation. Use analogies for non-technical interviewers.\n\n' +
-        'No quotes, no preamble. Write the actual words to say. 2–5 sentences.',
+        'No quotes or generic preamble. Write the actual words to say. ' + SPOKEN_ANSWER_FORMAT,
         contextBlock
       ), aiRules, 'say');
     },
@@ -141,7 +149,7 @@ const MODES = {
         BASE_RULES +
         'Answer the question directly and concisely. ' +
         'When the question is about the candidate\'s background, use their actual experience. ' +
-        'When the question is conceptual, explain clearly with examples. No preamble.',
+        'When the question is conceptual, explain clearly with examples. ' + SPOKEN_ANSWER_FORMAT,
         contextBlock
       ), aiRules, 'ask');
     },
@@ -169,7 +177,7 @@ const MODES = {
         '• EXPERIENCE: Reference specific roles/projects from their resume.\n' +
         '• COMPENSATION: State the salary target confidently in one sentence.\n' +
         '• SITUATIONAL: Structured thinking — "First I would X, then Y, because Z."\n\n' +
-        'Write in first person, as the candidate speaking. No preamble. 2–5 sentences.',
+        'Write in first person, as the candidate speaking. No generic preamble. ' + SPOKEN_ANSWER_FORMAT,
         contextBlock
       ), aiRules, 'answerThis');
     },

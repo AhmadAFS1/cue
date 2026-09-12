@@ -48,6 +48,15 @@ test('every non-leetcode mode injects AI rules into its system prompt', () => {
   }
 });
 
+test('answer modes provide a short spoken answer followed by detailed bullets', () => {
+  for (const mode of ['assist', 'say', 'ask', 'answerThis']) {
+    const system = MODES[mode].buildSystem(null);
+    assert.match(system, /Say this:/i, mode + ' should include a spoken section');
+    assert.match(system, /2–3 sentence/i, mode + ' should limit the spoken section');
+    assert.match(system, /Details:.*bullet/i, mode + ' should include detailed bullets');
+  }
+});
+
 test('every non-leetcode mode returns the base prompt unchanged when no rules are set', () => {
   for (const [name, mode] of Object.entries(MODES)) {
     if (name === 'leetcode') continue;

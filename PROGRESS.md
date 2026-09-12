@@ -110,3 +110,8 @@ This is the working handoff and progress log. Read it before resuming changes an
 
 - Final installed-app validation passed: Transcribe changed to Pause with STREAMING status; Pause returned to Transcribe and OFF. Left transcription paused. Live meeting-audio content and physical global-key detector behavior remain unverified.
 - All source changes pushed successfully to `origin/codex/window-controls`. Personal resume/reference files and API credentials remain outside Git.
+
+## Spoken-answer format
+
+- Updated the answer-generating modes (Screenshot, What should I say?, Ask, and Answer This) to produce a **Say this** section first: an informal first-person answer of 2–3 sentences that can be read verbatim. A **Details** section follows with concise non-repetitive bullets.
+- Follow-up Questions, Recap, and LeetCode retain their specialized formats. Automated tests: 149/149 pass.
