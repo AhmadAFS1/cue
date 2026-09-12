@@ -130,9 +130,9 @@ This is the working handoff and progress log. Read it before resuming changes an
 ## Transcript source labels
 
 - Fixed a shared-interim-row bug that could show system-audio text under the microphone label. The transcript now maintains independent live rows for both sources and labels finalized bubbles as **Me · microphone** and **Other person · system audio**.
-- The labels identify capture source, not voice-print diarization: if a call routes the user's own audio back through the system-audio device, that echoed copy is still correctly marked as system audio. Tests: 153/153 pass. Source changes are ready to commit and push.
+- The labels identify capture source, not voice-print diarization: if a call routes the user's own audio back through the system-audio device, that echoed copy is still correctly marked as system audio. Tests: 153/153 pass.
 
 ## Factual technical interview answers
 
 - Answer-generating modes now answer technical, conceptual, and factual interview questions from general knowledge even without resume context. They must not say “I do not know” simply because the candidate's materials do not cover the topic, while still not inventing personal experience.
-- Validated with the configured GPT Sol Fast model using “What is the difference between JDK and JRE?”; it returned a direct JDK/JRE explanation. Tests: 154/154 pass.
+- Validated with the configured GPT Sol Fast model using “What is the difference between JDK and JRE?”; it returned a direct JDK/JRE explanation. Tests: 154/154 pass. The stable signed build is installed and changes are pushed in commit `53f24b6`.
