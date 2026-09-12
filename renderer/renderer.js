@@ -926,8 +926,13 @@
   let sidebarOpen = false;
   // Track last committed row per channel — all chunks from same speaker go in one row
   const tsLastRow = { you: null, them: null };
+  const tsLastAt = { you: 0, them: 0 };
   const tsRowTimer = { you: null, them: null };
-  const TS_SENTENCE_GAP_MS = 10000; // 10s silence = new row
+  // A completed STT turn after this quiet period starts a fresh bubble. This
+  // keeps a long interviewer answer readable instead of accumulating it all
+  // into one receiver row.
+  const TS_SENTENCE_GAP_MS = 1800;
+  const TS_MAX_BUBBLE_CHARS = 720;
 
   function showSidebar() {
     const sidebar = document.getElementById('transcript-sidebar');
@@ -1004,8 +1009,12 @@
       // Remove interim row
       if (tsSidebarInterimEl) { tsSidebarInterimEl.remove(); tsSidebarInterimEl = null; }
 
+      const now = Date.now();
       const existingRow = tsLastRow[channel];
-      const useExisting = existingRow && existingRow.isConnected;
+      const existingText = existingRow?.querySelector('.ts-text')?.textContent || '';
+      const useExisting = existingRow && existingRow.isConnected &&
+        now - tsLastAt[channel] < TS_SENTENCE_GAP_MS &&
+        existingText.length + text.length + 1 <= TS_MAX_BUBBLE_CHARS;
 
       if (useExisting) {
         // Append to existing row — accumulates sentence fragments
@@ -1032,14 +1041,21 @@
         tsLastRow[channel] = row;
       }
 
-      // Reset silence timer
+      tsLastAt[channel] = now;
+
+      // Close this bubble after a meaningful pause. The next finalized turn
+      // becomes its own visible message bubble.
       clearTimeout(tsRowTimer[channel]);
-      tsRowTimer[channel] = setTimeout(() => { tsLastRow[channel] = null; }, TS_SENTENCE_GAP_MS);
+      tsRowTimer[channel] = setTimeout(() => {
+        tsLastRow[channel] = null;
+        tsLastAt[channel] = 0;
+      }, TS_SENTENCE_GAP_MS);
 
       // When THIS channel speaks, reset the OTHER channel's row
       const other = channel === 'you' ? 'them' : 'you';
       clearTimeout(tsRowTimer[other]);
       tsLastRow[other] = null;
+      tsLastAt[other] = 0;
 
       list.scrollTop = list.scrollHeight;
     }
@@ -1050,6 +1066,7 @@
     if (list) list.innerHTML = '<div class="ts-placeholder">Conversation history will appear here when listening.</div>';
     tsSidebarInterimEl = null;
     tsLastRow.you = null; tsLastRow.them = null;
+    tsLastAt.you = 0; tsLastAt.them = 0;
     clearTimeout(tsRowTimer.you); clearTimeout(tsRowTimer.them);
   }
 

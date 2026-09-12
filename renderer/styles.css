@@ -702,6 +702,7 @@ button:focus { outline: none; }
 
 /* Each transcript turn — clean, minimal */
 .ts-turn {
+  margin-top: 6px;
   padding: 6px 10px;
   border-radius: 8px;
   font-size: 12.5px;

@@ -115,3 +115,9 @@ This is the working handoff and progress log. Read it before resuming changes an
 
 - Updated the answer-generating modes (Screenshot, What should I say?, Ask, and Answer This) to produce a **Say this** section first: an informal first-person answer of 2–3 sentences that can be read verbatim. A **Details** section follows with concise non-repetitive bullets.
 - Follow-up Questions, Recap, and LeetCode retain their specialized formats. Automated tests: 149/149 pass.
+
+## Transcript bubbles
+
+- Live transcript bubbles now close after a 1.8-second pause. A later utterance from the same speaker starts a new bubble; switching speakers always closes the prior speaker's bubble.
+- A transcript bubble is also capped at 720 characters, so continuous receiver speech stays scannable even when endpointing produces several nearby final chunks. OpenAI realtime transcription now waits 1.2 seconds of silence before finalizing a turn, reducing sentence-fragment bubbles.
+- Automated tests: 150/150 pass. Installed the signed update with `npm run install:mac -- --resources-only`; Cue reopened normally. Live audio is not injected for a transcript visual check, so the pause behavior is validated by the renderer logic and STT configuration rather than a fabricated conversation.

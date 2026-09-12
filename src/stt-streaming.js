@@ -31,6 +31,11 @@ class OpenAIRealtimeSTT {
     this._reconnectDelay = 1000;
     this._pendingAudio = [];
     this._sessionReady = false;
+    // A final transcript is emitted after this quiet interval. Keep it long
+    // enough to avoid chopping normal sentence pauses into separate bubbles.
+    this.silenceDurationMs = Number.isFinite(options.silenceDurationMs)
+      ? Math.max(500, Math.min(5000, options.silenceDurationMs))
+      : 1200;
   }
 
   async connect() {
@@ -66,7 +71,7 @@ class OpenAIRealtimeSTT {
                   model: this.model,
                   language: 'en'
                 },
-                turn_detection: { type: 'server_vad', silence_duration_ms: 500, prefix_padding_ms: 300 }
+                turn_detection: { type: 'server_vad', silence_duration_ms: this.silenceDurationMs, prefix_padding_ms: 300 }
               }
             }
           }
