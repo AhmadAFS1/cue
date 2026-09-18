@@ -353,7 +353,14 @@ function createLLM(settings) {
     configurationError,
     async stream(params) {
       if (!ready) throw new Error(configurationError || `Complete the ${provider} provider settings.`);
-      const args = { apiKey, baseURL, endpoint, model, maxTokens, reasoningEffort, ...params, turns: sanitizeTurns(params.turns) };
+      const referenceTurn = params.referenceContext
+        ? [{ role: 'user', text: params.referenceContext }]
+        : [];
+      // Keep the complete candidate documents as a stable, completed message
+      // before the changing transcript/question. GPT-5.6 can reuse that
+      // prefix through prompt caching, while all providers keep the same
+      // grounding behavior.
+      const args = { apiKey, baseURL, endpoint, model, maxTokens, reasoningEffort, ...params, turns: [...referenceTurn, ...sanitizeTurns(params.turns)] };
       try {
         if (provider === 'openai') return await streamOpenAI(args);
         if (provider === CUSTOM_PROVIDER) return await streamOpenAI(args);

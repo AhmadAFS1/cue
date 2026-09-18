@@ -61,7 +61,7 @@ test('answer modes provide a short spoken answer followed by detailed bullets', 
   for (const mode of ['assist', 'say', 'ask', 'answerThis']) {
     const system = MODES[mode].buildSystem(null);
     assert.match(system, /Say this:/i, mode + ' should include a spoken section');
-    assert.match(system, /3–5 sentence/i, mode + ' should provide a complete spoken section');
+    assert.match(system, /2–3 sentence/i, mode + ' should provide a complete spoken section');
     assert.match(system, /Details:.*bullet/i, mode + ' should include detailed bullets');
   }
 });
@@ -93,14 +93,15 @@ test('leetcode mode never applies AI rules (coding answers stay strict)', () => 
   assert.match(withRules, /competitive programmer/);
 });
 
-test('screenshot mode combines rolling summary with the bounded transcript supplied to it', () => {
-  const transcript = Array.from({ length: 20 }, (_, i) => ({
+test('screenshot mode combines rolling summary with a bounded recent transcript', () => {
+  const transcript = Array.from({ length: 40 }, (_, i) => ({
     channel: i % 2 ? 'you' : 'them',
-    text: `turn-${i + 1}`
+    text: `turn-${i + 1}: ${'x'.repeat(500)}`
   }));
   const text = MODES.assist.build({ transcript, conversationSummary: 'Earlier discussion was condensed here.', userText: '' });
   assert.match(text, /Conversation memory/);
   assert.match(text, /Earlier discussion was condensed here/);
-  assert.ok(text.includes('turn-1'), 'prompt builder should preserve the already-bounded input it receives');
-  assert.ok(text.includes('turn-20'), 'latest transcript turn should be included');
+  assert.match(text, /Earlier turns omitted for response speed/);
+  assert.ok(!text.includes('turn-1:'), 'oldest transcript turn should be compacted');
+  assert.ok(text.includes('turn-40:'), 'latest transcript turn should be retained');
 });

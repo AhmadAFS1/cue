@@ -161,3 +161,9 @@ This is the working handoff and progress log. Read it before resuming changes an
 
 - Push preparation found three newer remote commits. Merge resolution preserves their docked history, pause-delimited bubbles, independent audio-source interim rows, and factual-answer instructions alongside local rolling memory, detailed output, and movement controls. Current viewer labels retain the requested `Interviewer`/`You` roles with explicit system-audio/microphone suffixes. This merge is source-only; the installed app has not been updated during the Git handoff.
 - Combined-source validation passes: 162/162 automated tests, merge-resolved JavaScript syntax checks, and `git diff --check`.
+
+## Live-answer latency
+
+- Preserved the rolling transcript summary and newest turns, while adding a character cap to each live-answer mode. Screenshot keeps at most 32 turns / 12,000 characters; What should I say?, Follow-up, and Ask use smaller mode-specific budgets. Recap keeps the complete interview memory.
+- The complete selected resume and supporting references now travel as one stable message before the changing live question. GPT-5.6 can reuse that reference prefix through prompt caching when available, without dropping cover-letter or system-design context.
+- The installed app remains the last verified build while this merged source revision is validated and installed.

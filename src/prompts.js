@@ -5,18 +5,38 @@
 
 const { appendAiRules } = require('./profile-context');
 
-function formatTranscript(turns, limit) {
-  const recent = limit ? turns.slice(-limit) : turns;
-  return recent.map((t) => (t.channel === 'them' ? 'Interviewer: ' : 'You: ') + t.text).join('\n');
+function formatTranscript(turns, limitOrOptions) {
+  const options = typeof limitOrOptions === 'number'
+    ? { turnLimit: limitOrOptions || Infinity, charLimit: Infinity }
+    : (limitOrOptions || {});
+  const recent = (turns || []).slice(-(options.turnLimit || Infinity));
+  const lines = [];
+  let used = 0;
+  let omitted = (turns || []).length > recent.length;
+
+  // Work backward so a long meeting never displaces the latest interviewer
+  // question from the live request.
+  for (let index = recent.length - 1; index >= 0; index -= 1) {
+    const turn = recent[index];
+    const line = (turn.channel === 'them' ? 'Interviewer: ' : 'You: ') + String(turn.text || '');
+    const separator = lines.length ? 1 : 0;
+    if (lines.length && used + separator + line.length > (options.charLimit || Infinity)) {
+      omitted = true;
+      break;
+    }
+    lines.unshift(line);
+    used += separator + line.length;
+  }
+  return (omitted ? '[Earlier turns omitted for response speed. Focus on the newest question.]\n' : '') + lines.join('\n');
 }
 
-function formatConversation(ctx, limit) {
+function formatConversation(ctx, options) {
   const parts = [];
   if (ctx.conversationSummary) {
     parts.push('Earlier conversation summary (reference data):\n--- BEGIN SUMMARY ---\n' +
       ctx.conversationSummary + '\n--- END SUMMARY ---');
   }
-  const recent = formatTranscript(ctx.transcript || [], limit);
+  const recent = formatTranscript(ctx.transcript || [], options);
   if (recent) parts.push('Recent verbatim turns:\n' + recent);
   return parts.join('\n\n');
 }
@@ -48,8 +68,8 @@ const FACTUAL_TECHNICAL_RULES =
 // to understand or adapt it without having to infer the reasoning.
 const SPOKEN_ANSWER_FORMAT =
   'Use exactly this response layout:\n' +
-  '**Say this:** Write a natural, informal 3–5 sentence answer in first person that the candidate can read out loud verbatim. Avoid jargon unless the interviewer used it.\n\n' +
-  '**Details:** Follow with 6–10 substantive bullet points covering the reasoning, relevant evidence, steps, technical mechanics, tradeoffs, and a concrete example where useful. Do not repeat the spoken answer verbatim. ';
+  '**Say this:** Write a natural, informal 2–3 sentence answer in first person that the candidate can read out loud verbatim. Avoid jargon unless the interviewer used it.\n\n' +
+  '**Details:** Follow with concise bullet points covering the reasoning, relevant evidence, steps, technical mechanics, tradeoffs, and a concrete example where useful. Do not repeat the spoken answer verbatim. ';
 
 const MODES = {
 
@@ -79,7 +99,7 @@ const MODES = {
       ), aiRules, 'assist');
     },
     build(ctx) {
-      const memory = formatConversation(ctx, 0);
+      const memory = formatConversation(ctx, { turnLimit: 32, charLimit: 12000 });
       return 'Conversation memory:\n' + (memory || '(none)') + '\n\nRespond with exactly what I should say right now.';
     }
   },
@@ -109,7 +129,7 @@ const MODES = {
       ), aiRules, 'say');
     },
     build(ctx) {
-      const memory = formatConversation(ctx, 16);
+      const memory = formatConversation(ctx, { turnLimit: 16, charLimit: 8000 });
       return 'Interview conversation so far:\n' + (memory || '(listening not started yet)') +
         '\n\nWhat should I say next?';
     }
@@ -131,7 +151,7 @@ const MODES = {
       ), aiRules, 'followup');
     },
     build(ctx) {
-      const memory = formatConversation(ctx, 20);
+      const memory = formatConversation(ctx, { turnLimit: 20, charLimit: 8000 });
       return 'Conversation so far:\n' + (memory || '(none)') + '\n\nSuggest follow-up questions for the interviewer.';
     }
   },
@@ -174,7 +194,7 @@ const MODES = {
       ), aiRules, 'ask');
     },
     build(ctx) {
-      const memory = formatConversation(ctx, 12);
+      const memory = formatConversation(ctx, { turnLimit: 12, charLimit: 6000 });
       return (memory ? 'Relevant conversation memory:\n' + memory + '\n\n' : '') + 'Question: ' + ctx.userText;
     }
   },

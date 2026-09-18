@@ -1874,7 +1874,7 @@
     {
       icon: '✨',
       title: 'You’re all set',
-      body: 'How to use cue:<ul><li>' + assistShortcut + ' — <strong>Screenshot</strong> uses your screen and the entire conversation</li><li>' + solveShortcut + ' — solve a coding problem on screen</li><li>Click <strong>▢</strong> in the top bar to start listening to a meeting</li><li>Type a question and press <span class="kbd">↵</span></li></ul>Reopen this guide anytime by clicking the <strong>cue logo</strong>. Quit with ' + quitShortcut + '.'
+      body: 'How to use cue:<ul><li>' + assistShortcut + ' — <strong>Screenshot</strong> uses your screen and recent conversation</li><li>' + solveShortcut + ' — solve a coding problem on screen</li><li>Click <strong>▢</strong> in the top bar to start listening to a meeting</li><li>Type a question and press <span class="kbd">↵</span></li></ul>Reopen this guide anytime by clicking the <strong>cue logo</strong>. Quit with ' + quitShortcut + '.'
     }
   ];
   let obIndex = 0;

@@ -34,14 +34,14 @@ test('buildSystem weaves profile into assist/say/ask but not leetcode', () => {
   assert.ok(!leet.includes('ZZ_PROFILE_SENTINEL_ZZ'));
 });
 
-test('buildUserTurn passes rolling summary and transcript to screenshot mode', () => {
-  const longTranscript = Array.from({ length: 20 }, (_, i) => ({ channel: 'them', text: `turn-${i + 1}` }));
+test('buildUserTurn preserves the rolling summary and newest bounded screenshot context', () => {
+  const longTranscript = Array.from({ length: 40 }, (_, i) => ({ channel: 'them', text: `turn-${i + 1}: ${'x'.repeat(500)}` }));
   const ctx = buildContext({ transcript: longTranscript, conversationSummary: 'condensed earlier context' });
   const turn = buildUserTurn(MODES.assist, ctx);
   assert.ok(typeof turn === 'string');
   assert.ok(turn.includes('condensed earlier context'));
-  assert.ok(turn.includes('turn-1'));
-  assert.ok(turn.includes('turn-20'));
+  assert.ok(!turn.includes('turn-1:'));
+  assert.ok(turn.includes('turn-40:'));
 });
 
 test('windowFor returns sensible sizes per mode', () => {
