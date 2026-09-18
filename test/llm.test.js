@@ -105,6 +105,7 @@ test('uses GPT-5.6 Sol as the OpenAI default with latency-safe request parameter
   assert.equal(capturedCompletionRequest.model, 'gpt-5.6-sol');
   assert.equal(capturedCompletionRequest.reasoning_effort, 'none');
   assert.equal(capturedCompletionRequest.max_completion_tokens, 700);
+  assert.equal(capturedCompletionRequest.service_tier, 'fast');
   assert.equal('max_tokens' in capturedCompletionRequest, false);
 });
 
@@ -119,6 +120,7 @@ test('uses low reasoning for GPT-5.6 Sol when Smart mode is enabled', async () =
   await llm.stream({ system: '', turns: [], onToken: () => {} });
   assert.equal(capturedCompletionRequest.reasoning_effort, 'low');
   assert.equal(capturedCompletionRequest.max_completion_tokens, 1400);
+  assert.equal(capturedCompletionRequest.service_tier, 'fast');
 });
 
 test('reports incomplete Custom endpoint settings without making a request', () => {

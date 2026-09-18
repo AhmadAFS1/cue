@@ -167,3 +167,8 @@ This is the working handoff and progress log. Read it before resuming changes an
 - Preserved the rolling transcript summary and newest turns, while adding a character cap to each live-answer mode. Screenshot keeps at most 32 turns / 12,000 characters; What should I say?, Follow-up, and Ask use smaller mode-specific budgets. Recap keeps the complete interview memory.
 - The complete selected resume and supporting references now travel as one stable message before the changing live question. GPT-5.6 can reuse that reference prefix through prompt caching when available, without dropping cover-letter or system-design context.
 - Combined-source tests pass 162/162. Installed the merged build with `npm run install:mac`; `/Applications/cue.app` passes `codesign --verify --deep --strict`.
+
+## Fast API processing tier
+
+- GPT-5.6 Sol requests now opt into OpenAI's `service_tier: fast`, in addition to Cue Fast's existing no-reasoning configuration. This targets lower server queueing and earlier streamed output without switching to a lower-quality model or duplicating the full resume/reference context in parallel requests.
+- Source tests pass 162/162. Installed with `npm run install:mac`; `/Applications/cue.app` passes `codesign --verify --deep --strict`. A live Cue request completed successfully using the configured OpenAI account, confirming the Fast-tier request is accepted.

@@ -106,7 +106,7 @@ function stripDataUrl(dataUrl) {
   return m ? { mime: m[1], b64: m[2] } : null;
 }
 
-async function streamOpenAI({ apiKey, baseURL, model, system, turns, imageDataUrl, maxTokens, reasoningEffort, onToken }) {
+async function streamOpenAI({ apiKey, baseURL, model, system, turns, imageDataUrl, maxTokens, reasoningEffort, serviceTier, onToken }) {
   const OpenAI = require('openai');
   const client = new OpenAI(baseURL ? { apiKey, baseURL } : { apiKey });
   const messages = [{ role: 'system', content: system }];
@@ -124,6 +124,7 @@ async function streamOpenAI({ apiKey, baseURL, model, system, turns, imageDataUr
     }
   });
   const request = { model, messages, stream: true };
+  if (serviceTier) request.service_tier = serviceTier;
   if (reasoningEffort) {
     // GPT-5.6 uses max_completion_tokens. Keep reasoning explicit because its
     // implicit medium setting is needlessly slow for a live interview overlay.
@@ -346,6 +347,12 @@ function createLLM(settings) {
   const reasoningEffort = provider === 'openai' && /^gpt-5\.6(?:-|$)/i.test(model)
     ? (settings.smart ? 'low' : 'none')
     : '';
+  // GPT-5.6 Sol supports the API's Fast processing tier. This is distinct
+  // from Cue's Smart/Fast reasoning toggle: it reduces server queueing before
+  // streaming begins while preserving the selected model and answer quality.
+  const serviceTier = provider === 'openai' && /^gpt-5\.6-sol$/i.test(model)
+    ? 'fast'
+    : '';
 
   return {
     provider, model, apiKey, baseURL,
@@ -360,7 +367,7 @@ function createLLM(settings) {
       // before the changing transcript/question. GPT-5.6 can reuse that
       // prefix through prompt caching, while all providers keep the same
       // grounding behavior.
-      const args = { apiKey, baseURL, endpoint, model, maxTokens, reasoningEffort, ...params, turns: [...referenceTurn, ...sanitizeTurns(params.turns)] };
+      const args = { apiKey, baseURL, endpoint, model, maxTokens, reasoningEffort, serviceTier, ...params, turns: [...referenceTurn, ...sanitizeTurns(params.turns)] };
       try {
         if (provider === 'openai') return await streamOpenAI(args);
         if (provider === CUSTOM_PROVIDER) return await streamOpenAI(args);
